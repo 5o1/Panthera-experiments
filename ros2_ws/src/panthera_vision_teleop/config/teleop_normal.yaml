@@ -1,0 +1,12 @@
+# 扩大动作范围的 dry-run 调参档。完成实测审查前禁止用于 robot 模式。
+teleop_mapper_node:
+  ros__parameters:
+    position_gain: [0.0, 0.35, 0.20]
+    max_position_offset: [0.0, 0.08, 0.06]
+    position_deadband_m: [0.0, 0.002, 0.002]
+    # camera envelope 已覆盖操作者自然动作范围。连续真机路径不再由旧
+    # 12 mm 阻塞点调度，而由 50 Hz latest-only IK backend 接入 Host 参数。
+    max_position_velocity_mps: [0.02, 0.30, 0.25]
+    max_position_acceleration_mps2: [0.08, 1.20, 1.00]
+    enable_orientation: false
+    publish_gripper_commands: false

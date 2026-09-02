@@ -79,17 +79,17 @@ none
 
 本实验只需发布 `/pos_cmd` 和 `/gripper_cmd`，并订阅 `/end_pose_euler` 取得激活时的机器人末端零点。
 
-### 3.3 Windows 与 WSL 的分工
+### 3.3 WSL 内的进程分工
 
 ```text
-Windows
-└── vision_sender.py
+WSL 视觉虚拟环境
+└── windows_vision/vision_sender.py（目录名是历史遗留，程序同时支持 Linux）
     ├── OpenCV 读取笔记本摄像头
     ├── Pose Landmarker
     ├── Gesture Recognizer
     └── WebSocket JSON
 
-WSL Ubuntu 22.04 + ROS 2 Humble
+WSL ROS 2 Humble 环境
 ├── vision_bridge_node.py
 │   └── WebSocket JSON → ROS 2 topics
 ├── teleop_mapper_node.py
@@ -98,38 +98,37 @@ WSL Ubuntu 22.04 + ROS 2 Humble
     └── ROS 2 命令 → Panthera 真机
 ```
 
-摄像头留在 Windows，机械臂 USB 通过 `usbipd-win` 交给 WSL。Windows 视觉程序不直接控制机器人；所有机器人命令都在 ROS 2 图中可见。
+摄像头和机械臂 USB 都通过 `usbipd-win` 交给 WSL。视觉程序运行在独立 venv 中但不直接控制机器人；它只向本机 WebSocket 发送观测，所有机器人命令都在 ROS 2 图中可见。
 
 ## 4. 建议的工程结构
 
-在 Panthera ROS 2 工作空间的 `src` 下建立一个 Python package：
+本项目保持为独立 GitHub 仓库和独立 ROS 2 overlay workspace，不把实验代码复制进 Panthera 官方仓库。在本仓库的 `ros2_ws/src` 下建立 Python package：
 
 ```bash
-cd ~/Panthera_HT_ROS2/src
+cd ~/panthera/ros2_ws/src
 ros2 pkg create --build-type ament_python panthera_vision_teleop \
   --dependencies rclpy geometry_msgs std_msgs example_interfaces sensor_msgs panthera_interfaces
 ```
 
 ```text
-Panthera_HT_ROS2/
-├── src/
-│   ├── panthera_arm_control/
-│   ├── panthera_interfaces/
-│   └── panthera_vision_teleop/
-│       ├── package.xml
-│       ├── setup.py
-│       ├── setup.cfg
-│       ├── resource/
-│       ├── launch/
-│       │   └── vision_teleop.launch.py
-│       ├── config/
-│       │   └── teleop.yaml
+panthera/
+├── ros2_ws/
+│   └── src/
 │       └── panthera_vision_teleop/
-│           ├── vision_bridge_node.py
-│           ├── teleop_mapper_node.py
-│           ├── rotation_utils.py
-│           └── debug_pose_publisher.py
-├── windows_vision/
+│           ├── package.xml
+│           ├── setup.py
+│           ├── setup.cfg
+│           ├── resource/
+│           ├── launch/
+│           │   └── vision_teleop.launch.py
+│           ├── config/
+│           │   └── teleop.yaml
+│           └── panthera_vision_teleop/
+│               ├── vision_bridge_node.py
+│               ├── teleop_mapper_node.py
+│               ├── rotation_utils.py
+│               └── debug_pose_publisher.py
+├── windows_vision/                 # 历史目录名；当前由 WSL 视觉 venv 运行
 │   ├── vision_sender.py
 │   ├── capture_gesture_dataset.py
 │   ├── train_gesture_model.ipynb
@@ -138,6 +137,16 @@ Panthera_HT_ROS2/
 │       ├── gesture_recognizer.task
 │       └── custom_gesture_recognizer.task
 └── bags/
+```
+
+Panthera 官方工作区作为 underlay 独立存在。构建本项目之前按以下顺序 source：
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/Panthera_HT_ROS2/install/setup.bash
+cd ~/panthera/ros2_ws
+colcon build --symlink-install
+source install/setup.bash
 ```
 
 `debug_pose_publisher.py` 用固定的测试数据模拟视觉输入。这样可以在摄像头或视觉模型尚未完成时单独学习和调试 ROS 2 链路。
@@ -172,7 +181,7 @@ ros2 interface show panthera_interfaces/msg/PosCmd
 ros2 interface show panthera_interfaces/msg/EndPoseEuler
 ```
 
-### 5.3 Windows 到 WSL 的 JSON
+### 5.3 WSL 视觉 venv 到 ROS bridge 的 JSON
 
 每次视觉推理只发送一个最新状态：
 
@@ -194,7 +203,7 @@ ros2 interface show panthera_interfaces/msg/EndPoseEuler
 }
 ```
 
-`source_time_ms` 只用于日志和检查递增。WSL 的数据超时必须使用 WSL 收到消息时记录的本地时间，不能直接拿 Windows monotonic 时钟与 WSL monotonic 时钟相减。
+`source_time_ms` 只用于日志和检查递增。bridge 的数据超时必须使用收包时记录的本地单调时钟，不能拿发送进程的 monotonic 与接收进程时钟直接相减。
 
 `pose_score` 取右肩、右肘、右腕三个 landmark 的 `visibility` 最小值。Gesture Recognizer 根据 `handedness` 只选择右手；输入模型的图像保持原方向，需要镜像时只镜像显示窗口。按 `R` 时仅让一个数据包的 `recalibrate=true`，mapper 收到后重新记录零点。
 
@@ -355,7 +364,7 @@ gesture_dataset/
 → GestureRecognizer.create(...)
 → model.evaluate(...)
 → export gesture_recognizer.task
-→ Windows 视觉程序替换模型文件
+→ WSL 视觉程序替换模型文件
 ```
 
 Model Maker 官方要求数据集中必须有一个名为 `none` 的类别。导出的 `.task` 文件可以直接交给 Gesture Recognizer。Model Maker 当前处于“仍可用但不再积极维护”状态，因此建议在独立 Python 环境或 Google Colab 中训练，不要与 ROS 2 环境混装。
@@ -416,7 +425,7 @@ teleop_mapper_node:
 
 ### 阶段 1：视觉模型离线验证
 
-目标：Windows 上只显示结果，不连接 ROS 2。
+目标：WSL 视觉 venv 只显示结果，不连接 ROS 2。
 
 1. OpenCV 打开笔记本摄像头，分辨率先用 640×480。
 2. Pose Landmarker 使用 `VIDEO` 模式，同步调用 `detect_for_video()`。
@@ -431,7 +440,7 @@ teleop_mapper_node:
 
 目标：视觉数据进入 ROS 2，但不控制机器人。
 
-1. Windows 视觉程序通过 WebSocket 发送 JSON。
+1. WSL 视觉 venv 中的程序通过本机 WebSocket 发送 JSON。
 2. `vision_bridge_node` 收到 JSON 后发布 `/teleop/*`。
 3. 用以下命令观察：
 
@@ -441,7 +450,7 @@ teleop_mapper_node:
    ros2 topic hz /teleop/human_pose
    ```
 
-4. 断开 Windows 程序，确认 bridge 在 0.5 秒后发布 `enabled=false`。
+4. 断开视觉发送程序，确认 bridge 在 0.5 秒后发布 `enabled=false`。
 
 完成条件：ROS 2 中能稳定看到约 10～15 Hz 的人体位姿和手势。
 
@@ -450,7 +459,7 @@ teleop_mapper_node:
 目标：验证人的运动如何变成机器人目标，不发送真机命令。
 
 1. `teleop_mapper_node` 订阅人体位姿和 `/end_pose_euler`。
-2. Windows 预览窗口按空格切换 enable；enable 上升沿记录人和机器人零点。
+2. WSL 摄像头预览窗口按空格切换 enable；enable 上升沿记录人和机器人零点。
 3. 发布映射结果到 `/teleop/debug_target`。
 4. 分别做右、上、前三个动作，修改轴映射直到符合直觉。
 5. 弯曲手肘、旋转前臂，观察目标 RPY。
@@ -540,10 +549,13 @@ action      = 机器人目标位姿 + 夹爪状态
 3. 启动视觉桥和重定向节点：
 
    ```bash
+   source /opt/ros/humble/setup.bash
+   source ~/Panthera_HT_ROS2/install/setup.bash
+   source ~/panthera/ros2_ws/install/setup.bash
    ros2 launch panthera_vision_teleop vision_teleop.launch.py
    ```
 
-4. 在 Windows 启动 `vision_sender.py`。
+4. 在 WSL 视觉 venv 启动 `vision_sender.py`。
 5. 观察预览，确认只有右侧操作者和右手被识别。
 6. 按空格启用/停止，按 `R` 请求重新建立零点，按 `Esc` 退出。
 7. 调试时另开终端观察 `/arm_status`、`/end_pose_euler` 和 `rqt_graph`。
@@ -567,7 +579,7 @@ action      = 机器人目标位姿 + 夹爪状态
 
 | 现象 | 优先检查 |
 |---|---|
-| 摄像头打不开 | Windows 摄像头权限、`VideoCapture(0/1)`、是否被其他程序占用 |
+| 摄像头打不开 | usbipd 是否 attach、WSL 是否有 `/dev/video*`、video 组权限、`VideoCapture(0/1)`、是否被其他程序占用 |
 | 手部经常消失 | 手距离摄像头过远、运动模糊、逆光；先降低动作速度 |
 | 左右手识别反了 | 是否在送模型前镜像图像；应只镜像预览 |
 | 机械臂方向反了 | 修改 `P_p/P_r` 轴映射，不改视觉模型 |
@@ -580,6 +592,8 @@ action      = 机器人目标位姿 + 夹爪状态
 ## 13. 论文与技术档案
 
 以下资料足以覆盖本计划中的模型、接口和数学工具。实现时优先看“官方实现文档”，论文用于理解模型原理。
+
+这些资料已经下载到仓库，离线文件、校验值和失败记录见 [`docs/references/README.md`](references/README.md)。
 
 ### 视觉模型
 
@@ -598,13 +612,13 @@ action      = 机器人目标位姿 + 夹爪状态
 3. [ROS 2 Python Publisher/Subscriber 教程](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Py-Publisher-And-Subscriber.html) — rclpy 节点和话题。
 4. [创建 ROS 2 Package](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html) — ament_python package 结构。
 5. [ROS 2 参数教程](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Using-Parameters-In-A-Class-Python.html) — 把 gain、阈值和映射放入参数文件。
-6. [ROS 2 rosbag2 教程](https://docs.ros.org/en/humble/Tutorials/Beginner-CLI-Tools/Recording-And-Playing-Back-Data.html) — 记录和回放 observation-action 数据。
+6. [ROS 2 rosbag2 教程](https://docs.ros.org/en/humble/Tutorials/Beginner-CLI-Tools/Recording-And-Playing-Back-Data/Recording-And-Playing-Back-Data.html) — 记录和回放 observation-action 数据。
 
 ### 数学、通信与系统
 
 1. [SciPy Rotation 文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.html) — 旋转矩阵、四元数和欧拉角互转。
 2. [SciPy Slerp 文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html) — 姿态平滑插值。
 3. [OpenCV VideoCapture 文档](https://docs.opencv.org/4.x/d8/dfe/classcv_1_1VideoCapture.html) — 摄像头读取。
-4. [WebSocket RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) — Windows/WSL 状态传输协议。
+4. [WebSocket RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) — 视觉 venv/ROS 状态传输协议。
 5. [Python websockets 文档](https://websockets.readthedocs.io/) — Python 客户端和服务端实现。
 6. [Microsoft WSL USB 连接文档](https://learn.microsoft.com/en-us/windows/wsl/connect-usb) — `usbipd-win` 和 USB attach。

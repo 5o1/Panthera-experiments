@@ -1,0 +1,13 @@
+# 仅用于 camera/synthetic dry-run 的 Y/Z 输入包络测量档。
+# 这些数值在人体可实现范围内等效于“不限幅、不限速、不滤波”，严禁用于真机。
+teleop_mapper_node:
+  ros__parameters:
+    position_gain: [0.0, 1.0, 1.0]
+    max_position_offset: [0.0, 2.0, 2.0]
+    position_deadband_m: [0.0, 0.0, 0.0]
+    position_alpha: 1.0
+    position_alpha_axes: [1.0, 1.0, 1.0]
+    max_position_velocity_mps: [0.02, 10.0, 10.0]
+    max_position_acceleration_mps2: [0.08, 100.0, 100.0]
+    enable_orientation: false
+    publish_gripper_commands: false

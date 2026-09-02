@@ -1,0 +1,22 @@
+# 阶段 0：单次微小位移测试参数。
+# 默认只预览目标。不要把 send_robot_command 的默认值改成 true。
+
+manual_target_node:
+  ros__parameters:
+    send_robot_command: false
+
+    # 相对“节点启动后首次收到的当前末端位置”的偏移，单位 m。
+    # 初次测试只改一个轴；0.01 表示 1 cm。
+    delta_xyz: [0.01, 0.0, 0.0]
+
+    # 代码还要独立检查此硬上限，不能只相信 YAML 输入。
+    max_abs_delta_m: 0.02
+
+    preview_topic: "/teleop/manual_target_preview"
+    robot_command_topic: "/pos_cmd"
+    end_pose_topic: "/end_pose_euler"
+    arm_status_topic: "/arm_status"
+
+    # 当前官方驱动：0=KDL IK 后执行关节目标；阶段 0 不使用直线路径模式。
+    mode1: 0
+    gripper: -1.0

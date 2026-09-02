@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!--
+  用途：声明 panthera_vision_teleop 的 ROS 2/rosdep 依赖和包元数据。
+  MediaPipe/OpenCV 属于独立的 WSL 视觉 venv，不应放进这个 ROS 系统 Python 包。
+  本地参考：
+    docs/references/docs/ros2_create_package.html
+    docs/references/source/Panthera-HT_ROS2-humble.zip（参考官方各包的 package.xml）
+-->
+<package format="3">
+  <name>panthera_vision_teleop</name>
+  <version>0.1.0</version>
+  <description>Monocular-vision Panthera-HT arm and gripper teleoperation demo.</description>
+
+  <maintainer email="assaneko@example.com">assaneko</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>example_interfaces</exec_depend>
+  <exec_depend>panthera_interfaces</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-websockets</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>forward_command_controller</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+
+  <test_depend>ament_pytest</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

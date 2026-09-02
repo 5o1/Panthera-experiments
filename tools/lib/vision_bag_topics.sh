@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+VISION_BAG_TOPICS=(
+    /teleop/human_pose
+    /teleop/pose_score
+    /teleop/gesture
+    /teleop/gesture_score
+    /teleop/enabled
+    /teleop/recalibrate
+    /teleop/depth_features
+    /teleop/pinch_ratio
+    /teleop/depth_clutch
+    /teleop/orientation_held
+    /teleop/transport_extra_lag_ms
+    /teleop/experiment_marker
+    /teleop/state
+    /teleop/command_in_flight
+    /teleop/hud
+    /teleop/debug_target
+    /teleop/debug_gripper
+    /teleop/diagnostics/classifier_gripper_candidate
+    /teleop/diagnostics/human_delta_camera
+    /teleop/diagnostics/raw_robot_offset
+    /teleop/diagnostics/deadbanded_robot_offset
+    /teleop/diagnostics/limited_robot_offset
+    /teleop/diagnostics/filtered_robot_offset
+    /teleop/diagnostics/motion_limited_robot_offset
+    /end_pose_euler
+    /joint_states_single
+    /joint_states
+    /arm_status
+    /pos_cmd
+    /arm_controller/controller_state
+    /teleop/backend_status
+)

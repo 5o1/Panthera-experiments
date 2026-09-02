@@ -1,0 +1,12 @@
+# 用途：Windows 实时视觉环境的直接 Python 依赖。
+# 参考：docs/Panthera-HT 单目视觉遥操作依赖列表.md
+# 参考：docs/references/docs/mediapipe_python_setup.html
+# 说明：这里暂不锁版本；首次跑通后再用 pip freeze 记录你验证过的版本组合。
+
+mediapipe
+opencv-contrib-python<4.12
+numpy<1.25
+scipy
+# Ubuntu 22.04 ships websockets 9.1, whose removed asyncio ``loop=`` argument
+# crashes on Python 3.10. Force a compatible release into the vision venv.
+websockets>=10.4,<12

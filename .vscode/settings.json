@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
+    "python.analysis.extraPaths": [
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/home/assaneko/Panthera_HT_ROS2/install/panthera_interfaces/local/lib/python3.10/dist-packages",
+        "/home/assaneko/panthera/ros2_ws/src/panthera_vision_teleop"
+    ]
+}

@@ -1,0 +1,9 @@
+# 仅用于 camera/synthetic dry-run；与 roll 档分开验收。
+teleop_mapper_node:
+  ros__parameters:
+    enable_orientation: true
+    orientation_axes: [0.0, 1.0, 0.0]
+    max_rotation_deg: 5.0
+    max_angular_velocity_degps: 5.0
+    max_angular_acceleration_degps2: 15.0
+    publish_gripper_commands: false

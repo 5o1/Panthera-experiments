@@ -1,0 +1,63 @@
+# 用途：集中保存 bridge 与 mapper 的可调参数，避免把阈值和安全限幅写死在代码中。
+# 学习参考：docs/references/docs/ros2_python_parameters.html
+# 设计来源：docs/Panthera-HT 单目视觉手臂与手势遥操作实验计划.md（第 8 节）
+# 调试纪律：始终从 publish_robot_commands=false 开始；dry-run 验证完成后才允许改为 true。
+
+vision_bridge_node:
+  ros__parameters:
+    websocket_host: "0.0.0.0"
+    websocket_port: 8765
+    receive_timeout_sec: 0.5
+    pose_score_min: 0.6
+    # 相对于本连接中最快的数据，额外积压超过 250 ms 的旧帧不进入 ROS 图。
+    max_transport_lag_sec: 0.25
+
+teleop_mapper_node:
+  ros__parameters:
+    command_rate_hz: 20.0
+    pose_score_min: 0.6
+    gesture_score_min: 0.7
+    gesture_stable_frames: 5
+    # 夹爪采用拇指/食指距离除以掌宽的归一化比例；分类器仅作对照诊断。
+    pinch_close_ratio: 0.35
+    pinch_open_ratio: 0.65
+    pinch_stable_sec: 0.6
+    gripper_cooldown_sec: 0.75
+    position_alpha: 0.25
+    position_alpha_axes: [0.25, 0.25, 0.25]
+    rotation_alpha: 0.25
+    # 第一轮真机实测表明单目深度会造成 X 抖动，因此先锁定机器人前后轴。
+    # Y（左右）和 Z（上下）仍由人体右腕相对肩部的运动控制。
+    position_gain: [0.0, 0.25, 0.12]
+    max_position_offset: [0.0, 0.05, 0.04]
+    # 各机器人轴的相对目标小于此值时视为单目关键点噪声。
+    position_deadband_m: [0.0, 0.002, 0.002]
+    # 连续目标独立限制每个机器人笛卡尔轴的速度和加速度。
+    max_position_velocity_mps: [0.02, 0.04, 0.03]
+    max_position_acceleration_mps2: [0.08, 0.15, 0.12]
+    max_rotation_deg: 20.0
+    orientation_axes: [1.0, 0.0, 0.0]
+    max_angular_velocity_degps: 10.0
+    max_angular_acceleration_degps2: 30.0
+    stale_timeout_sec: 0.5
+    # camera [x right, y down, z away] -> robot [x forward, y left, z up]
+    position_axis_matrix: [0.0, 0.0, -1.0,
+                           1.0, 0.0,  0.0,
+                           0.0, -1.0, 0.0]
+    # 第一轮只验证 XYZ；姿态映射需要单独 review 后再开启。
+    enable_orientation: false
+    open_labels: ["Open_Palm", "snake_open"]
+    close_labels: ["Closed_Fist", "snake_closed"]
+    publish_robot_commands: false
+    # 实测自然放松手可能被识别为 Open_Palm；夹爪必须另行显式开启。
+    publish_gripper_commands: false
+    # 官方驱动的 /pos_cmd 回调会阻塞直到到达。mapper 因而只允许一个在途命令，
+    # 等反馈到达目标后才会发送最新目标，避免 DDS 队列积压旧动作。
+    command_position_tolerance_m: 0.006
+    command_rotation_tolerance_rad: 0.06
+    command_timeout_sec: 16.0
+    # 误差达到 enter 才开始发点；开始后降到 exit 才停止，避免阈值附近抖动。
+    command_enter_delta_m: [0.006, 0.006, 0.006]
+    command_exit_delta_m: [0.003, 0.003, 0.003]
+    # 官方 /pos_cmd 执行期间无法可靠插入 stop；把每条不可中断位移限制为 12 mm。
+    max_command_step_m: 0.012

@@ -1,0 +1,9 @@
+{
+  "auto_advance_seconds": 6.0,
+  "phases": [
+    {"name": "envelope_static", "instruction": "保持右腕静止", "warmup_valid_frames": 45, "capture_valid_frames": 240},
+    {"name": "envelope_lateral", "instruction": "在画面内尽可能大幅度地左右往返三次", "warmup_valid_frames": 30, "capture_valid_frames": 360},
+    {"name": "envelope_vertical", "instruction": "在画面内尽可能大幅度地上下往返三次", "warmup_valid_frames": 30, "capture_valid_frames": 360},
+    {"name": "envelope_yz", "instruction": "在画面内尽可能大幅度地画 YZ 圆三次", "warmup_valid_frames": 30, "capture_valid_frames": 360}
+  ]
+}

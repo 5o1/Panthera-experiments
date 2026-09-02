@@ -1,0 +1,9 @@
+{
+  "phases": [
+    {"name": "robot_static", "instruction": "保持右腕静止", "warmup_valid_frames": 45, "capture_valid_frames": 180},
+    {"name": "robot_lateral", "instruction": "连续缓慢左右摆动三次后回标定位置", "warmup_valid_frames": 30, "capture_valid_frames": 300},
+    {"name": "robot_vertical", "instruction": "连续缓慢上下摆动三次后回标定位置", "warmup_valid_frames": 30, "capture_valid_frames": 300},
+    {"name": "robot_yz_combined", "instruction": "在 YZ 平面缓慢画小圆三次后回标定位置", "warmup_valid_frames": 30, "capture_valid_frames": 360},
+    {"name": "robot_stop_hold", "instruction": "停止人体动作并保持，观察是否继续追赶", "warmup_valid_frames": 15, "capture_valid_frames": 240}
+  ]
+}

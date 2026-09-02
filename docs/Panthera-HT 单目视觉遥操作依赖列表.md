@@ -1,6 +1,6 @@
 # Panthera-HT 单目视觉遥操作依赖列表
 
-这份清单只回答“需要准备和安装什么”。具体安装过程优先阅读每一项后面的官方文档。建议把视觉、ROS 2 和手势训练分成三个环境，不要把所有 Python 包塞进同一个环境。
+这份清单只回答“需要准备和安装什么”。具体安装过程优先阅读每一项后面的官方文档。建议把视觉、ROS 2 和手势训练分成三个环境，不要把所有 Python 包塞进同一个环境。当前实现把摄像头也挂载给 WSL，Windows 只保留 WSL/usbipd 宿主职责。
 
 完整实验步骤见[实验计划](<Panthera-HT 单目视觉手臂与手势遥操作实验计划.md>)。
 
@@ -8,14 +8,13 @@
 
 ```text
 Windows 主系统
-├── 笔记本摄像头
-├── Python 视觉环境
-└── usbipd-win
+└── WSL 2 + usbipd-win（转发摄像头和 Panthera USB）
 
 WSL 2：Ubuntu 22.04
 ├── ROS 2 Humble
-├── Panthera-HT_ROS2
-└── panthera_vision_teleop ROS package
+├── Panthera-HT_ROS2（独立 underlay 工作区）
+├── panthera/ros2_ws（本 GitHub 仓库的独立 overlay）
+└── .venv-wsl-vision（OpenCV + MediaPipe 摄像头进程）
 
 独立训练环境（任选）
 ├── Google Colab
@@ -25,27 +24,27 @@ WSL 2：Ubuntu 22.04
 
 Panthera 官方 ROS 2 仓库目前明确以 Ubuntu 22.04 + ROS 2 Humble 为目标。即使电脑里已有其他版本的 Ubuntu/WSL，也建议单独创建 Ubuntu 22.04 WSL distribution，不要为了本 Demo 改坏现有环境。
 
-## 2. Windows 侧
+## 2. Windows 宿主与 WSL 视觉环境
 
 ### 必需软件
 
 | 软件 | 用途 | 备注/官方资料 |
 |---|---|---|
-| Windows 10/11 | 摄像头和 WSL 宿主 | WSL 2 与 usbipd-win 所需 |
+| Windows 10/11 | WSL 宿主 | WSL 2 与 usbipd-win 所需 |
 | WSL 2 | 运行 Ubuntu 和 ROS 2 | [Microsoft WSL 文档](https://learn.microsoft.com/windows/wsl/install) |
 | Ubuntu 22.04 WSL | Panthera ROS 2 Humble 环境 | 与 Panthera 官方仓库一致 |
-| usbipd-win | 把 Panthera USB/CAN 设备交给 WSL | [Microsoft USB 连接文档](https://learn.microsoft.com/en-us/windows/wsl/connect-usb) |
+| usbipd-win | 把摄像头和 Panthera USB/CAN 设备交给 WSL | [Microsoft USB 连接文档](https://learn.microsoft.com/en-us/windows/wsl/connect-usb) |
 | Git | 获取项目和模型示例 | [Git 官网](https://git-scm.com/) |
-| Python 3.10 或 3.11 x64 | 运行摄像头和视觉模型 | 建议独立 virtualenv/conda 环境 |
+| Python 3.10 | 在 WSL 视觉 venv 运行摄像头和模型 | 与 Ubuntu 22.04 系统 Python 一致 |
 
-### Windows Python 包
+### WSL 视觉虚拟环境 Python 包
 
 ```text
 mediapipe
 opencv-python
 numpy
 scipy
-websockets
+websockets>=10.4,<12
 ```
 
 用途：
@@ -53,8 +52,8 @@ websockets
 - `mediapipe`：Pose Landmarker 和 Gesture Recognizer。
 - `opencv-python`：读取摄像头、画关键点和调试文字。
 - `numpy`：向量、矩阵和叉积。
-- `scipy`：旋转矩阵、四元数、RPY 和 Slerp。
-- `websockets`：向 WSL 发送视觉结果。
+- `scipy`：保留给后续分析；当前实时旋转映射只依赖 NumPy。
+- `websockets`：向本机 ROS bridge 发送视觉结果。
 
 对应文档：
 
@@ -67,12 +66,14 @@ websockets
 
 ### 视觉模型文件
 
-需要下载并保存在 `windows_vision/models/`：
+程序默认直接读取已经下载到 `docs/references/models/` 的模型：
 
 ```text
-pose_landmarker.task
+pose_landmarker_full.task
 gesture_recognizer.task
 ```
+
+无需复制模型；也可以通过 `vision_sender.py --pose-model/--gesture-model` 指定其他路径。自定义模型仍需使用自己的蛇头手势数据训练。
 
 模型下载入口位于对应 MediaPipe 官方任务页面的 Models 区域：
 
@@ -167,21 +168,20 @@ sensor_msgs
 panthera_interfaces
 ```
 
-WSL Python 还需要：
+ROS 系统 Python 还需要：
 
 ```text
 python3-numpy
-python3-scipy
-websockets（Ubuntu 包或 pip，选一种）
+websockets>=10.4,<12
 ```
 
-不需要在 WSL 安装 MediaPipe，也不需要把笔记本摄像头 attach 给 WSL。
+Jammy 自带的 `websockets 9.1` 在 Python 3.10 上仍会传入已删除的 `loop=` 参数，因此一键安装脚本会给系统 Python 和视觉 venv 都安装兼容版本。MediaPipe/OpenCV 只装在 `.venv-wsl-vision`，摄像头必须通过 usbipd attach 后在 WSL 出现 `/dev/video*`。
 
 ## 4. 自定义手势模型训练环境
 
 ### 推荐：Google Colab
 
-优点是 TensorFlow 和驱动问题较少，训练完成后只下载一个 `.task` 文件到 Windows。
+优点是 TensorFlow 和驱动问题较少，训练完成后只下载一个 `.task` 文件到项目模型目录。
 
 需要：
 
@@ -197,7 +197,7 @@ matplotlib
 
 ### 本地训练
 
-如果选择本地训练，单独创建一个 Python 环境，不与 Windows 实时推理环境或 WSL ROS 环境共用。Model Maker 官方已经标记为“不再积极维护但仍可使用”，所以遇到 TensorFlow 版本冲突时优先使用官方 Colab，而不是反复修改 ROS 环境。
+如果选择本地训练，单独创建一个 Python 环境，不与 WSL 实时推理 venv 或 ROS 环境共用。Model Maker 官方已经标记为“不再积极维护但仍可使用”，所以遇到 TensorFlow 版本冲突时优先使用官方 Colab，而不是反复修改 ROS 环境。
 
 ## 5. 硬件与外设
 
@@ -214,7 +214,7 @@ matplotlib
 
 ## 6. 安装完成后的最小自检
 
-Windows：
+WSL 视觉环境：
 
 ```text
 Python 能 import mediapipe、cv2、numpy、scipy、websockets

@@ -1,0 +1,11 @@
+# 单目 world-landmark 深度候选，仅供 camera/synthetic dry-run 量化方向和噪声。
+teleop_mapper_node:
+  ros__parameters:
+    position_gain: [0.10, 0.25, 0.12]
+    max_position_offset: [0.01, 0.05, 0.04]
+    position_deadband_m: [0.003, 0.002, 0.002]
+    position_alpha_axes: [0.12, 0.25, 0.25]
+    max_position_velocity_mps: [0.01, 0.04, 0.03]
+    max_position_acceleration_mps2: [0.04, 0.15, 0.12]
+    enable_orientation: false
+    publish_gripper_commands: false

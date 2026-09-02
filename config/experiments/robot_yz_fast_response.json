@@ -1,0 +1,6 @@
+{
+  "phases": [
+    {"name": "fast_yz_response", "instruction": "用自然速度画较大的 YZ 圆四次，然后回到标定位置", "warmup_valid_frames": 45, "capture_valid_frames": 480},
+    {"name": "fast_stop_hold", "instruction": "停止人体动作并保持，检查是否继续追赶", "warmup_valid_frames": 15, "capture_valid_frames": 240}
+  ]
+}

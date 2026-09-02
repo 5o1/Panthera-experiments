@@ -1,0 +1,14 @@
+{
+  "auto_advance_seconds": 6.0,
+  "phases": [
+    {"name": "static_relaxed", "instruction": "自然站立并保持，双臂放松", "warmup_valid_frames": 45, "capture_valid_frames": 300},
+    {"name": "depth_forward_back", "instruction": "右腕连续前伸后收三次，其他方向尽量不动", "warmup_valid_frames": 30, "capture_valid_frames": 300},
+    {"name": "lateral_left_right", "instruction": "右腕连续左右摆动三次", "warmup_valid_frames": 30, "capture_valid_frames": 300},
+    {"name": "vertical_up_down", "instruction": "右腕连续上下摆动三次", "warmup_valid_frames": 30, "capture_valid_frames": 300},
+    {"name": "bend_straight", "instruction": "连续弯曲和伸直右臂三次", "warmup_valid_frames": 30, "capture_valid_frames": 240},
+    {"name": "orientation_roll", "instruction": "只做预期 roll 的手臂旋转三次", "warmup_valid_frames": 30, "capture_valid_frames": 240},
+    {"name": "orientation_pitch", "instruction": "只做预期 pitch 的手臂旋转三次", "warmup_valid_frames": 30, "capture_valid_frames": 240},
+    {"name": "orientation_yaw", "instruction": "只做预期 yaw 的手臂旋转三次", "warmup_valid_frames": 30, "capture_valid_frames": 240},
+    {"name": "pinch_open_close", "instruction": "拇指食指明确开合十次", "warmup_valid_frames": 30, "capture_valid_frames": 300}
+  ]
+}
