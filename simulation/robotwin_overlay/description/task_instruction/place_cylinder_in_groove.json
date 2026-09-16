@@ -1,0 +1,16 @@
+{
+  "full_description": "use one Panthera arm and its gripper to place the cylinder into the groove",
+  "schema": "{A} denotes the cylinder and {B} denotes the groove",
+  "preference": "use a concise single-arm manipulation instruction",
+  "seen": [
+    "Use the gripper to place the {A} into the {B}",
+    "Grasp the center of the {A} and lower it into the {B}",
+    "Carry the {A} with the gripper and seat it in the {B}",
+    "Align the {A} with the {B}, lower it, then release",
+    "Place the {A} securely inside the {B}"
+  ],
+  "unseen": [
+    "Insert the {A} into the {B} using the Panthera arm",
+    "Set the {A} securely in the {B} with the gripper"
+  ]
+}

@@ -1,0 +1,14 @@
+diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
+--- a/vla-scripts/finetune.py
++++ b/vla-scripts/finetune.py
+@@ -1075,7 +1075,9 @@
+                 log_metrics_to_wandb(smoothened_metrics, "VLA Train", log_step, wandb)
+ 
+             # [If applicable] Linearly warm up learning rate from 10% to 100% of original
+-            if cfg.lr_warmup_steps > 0:
++            # Stop writing the warmup LR once warmup is complete. Otherwise this
++            # overwrites every later MultiStepLR decay on the following update.
++            if cfg.lr_warmup_steps > 0 and gradient_step_idx < cfg.lr_warmup_steps:
+                 lr_progress = min((gradient_step_idx + 1) / cfg.lr_warmup_steps, 1.0)  # Cap at 1.0
+                 current_lr = original_lr * (0.1 + 0.9 * lr_progress)
+                 for param_group in optimizer.param_groups:

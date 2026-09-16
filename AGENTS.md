@@ -17,9 +17,23 @@
    事件/有效帧驱动规则。
 9. [单目视觉实验计划](docs/Panthera-HT%20单目视觉手臂与手势遥操作实验计划.md)：最初
    的系统设计、坐标约定和分阶段实验方案。
+10. [OpenVLA 闭环失败分析](docs/10_openvla_closed_loop_failure_analysis.md)：连续动作头、
+    GPU 映射、训练/未见双轨遥测结论和当前续训门禁。
+11. [仿真与真实场景对齐](docs/09_sim_real_scene_alignment.md)：真实工作台影像归档位置、
+    策略相机/监控相机边界、必须对齐的任务几何和 sim-to-real 门槛。
+12. [v2 单次抓取与直接释放修复](docs/14_panthera_v2_single_grasp_direct_release_2026-09-16.md)：
+    schema 9 oracle、实际 qpos 连续性门禁和历史 PhysX 接触抖动。
+13. [v2 schema 10 正式数据集](docs/15_panthera_v2_formal_dataset_2026-09-16.md)：128 条正式
+    轨迹、连续性验收、Lab 产物和异步落盘任务池设计边界。
+14. [v2 无人值守训练流水线](docs/16_panthera_v2_unattended_training_pipeline_2026-09-16.md)：
+    用户审阅批准、长任务阶段、GPU1–3 并行策略、质量门和重启恢复入口。
 
 ## 当前边界
 
+- 当前 VLA 装配任务是**一台 Panthera 机械臂、一个夹爪，将一个圆柱插入凹槽**。不是
+  双机械臂协作任务。仿真的外部 observation/action 契约为 7 维：`joint1..joint6` 加
+  一个归一化夹爪量。仓库中双 Piper、双 Panthera 和 14 维数据仅是 2026-09-12 以前的
+  历史探索/兼容性证据，不得用于当前训练、评测或真机方案。
 - 当前默认候选链路是单 RGB MediaPipe → WebSocket → mapper → 50 Hz latest-only IK/关节流
   → 200 Hz ros2_control → Panthera SDK 非阻塞命令。旧 `/pos_cmd` 阻塞路径仅保留作对照。
 - 真机默认只开放 Y/Z 相对位置；X 深度和末端姿态仍默认关闭，夹爪真机发布也关闭。

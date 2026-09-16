@@ -1,0 +1,33 @@
+Panthera v2 仿真数据集生成报告自动审计
+时间：2026-09-16 Asia/Shanghai
+
+命令：
+/tmp/panthera-paper-audit-venv/bin/python \
+  /home/assaneko/.codex/skills/write-project-paper/scripts/audit_paper.py \
+  docs/panthera_v2_dataset_generation_report_zh.html \
+  --pdf docs/panthera_v2_dataset_generation_report_zh.pdf \
+  --json
+
+结果：PASS
+
+HTML：
+- 标题层级已识别，共 29 个 h1–h3 标题。
+- 正文引用编号：[1, 2, 3, 4, 5]。
+- 参考文献编号：[1, 2, 3, 4, 5]。
+- 缺失参考文献：无。
+- 未在正文使用的参考文献：无。
+- 外部链接：5。
+- 空表格单元格：0。
+- 模板化短语计数：不是 4；而是 1；并非 0；而非 1；值得注意的是 0；这意味着 0。
+  这些出现位置已经人工逐句复核，保留的都是任务边界或计划值/实际值的实质对比。
+
+PDF：
+- 页数：12。
+- 空白页：无。
+- 链接注释：6。
+- 标题元数据：从失败样本到可审计轨迹：Panthera 单机械臂圆柱插槽仿真数据集生成报告。
+
+补充检查：
+- 两个采集入口通过 `bash -n` 静态语法检查。
+- 使用 PyMuPDF 渲染并人工查看第 1、2、4、5、6、7、8、9、10、11、12 页。
+- 未发现中文缺字、图表越界、代码块截断、空白页或孤悬标题。

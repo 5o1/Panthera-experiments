@@ -1,0 +1,15 @@
+{
+  "seen": [
+    "Pick up the {A}, make it upright if needed, and insert it into the {B}.",
+    "Place the {A} vertically inside the {B}.",
+    "Grasp the {A}, reorient it when necessary, then insert it into the {B}.",
+    "Move the {A} into the {B} and leave it standing vertically.",
+    "Insert the {A} upright into the {B}.",
+    "Put the {A} into the {B}, correcting its orientation first if required.",
+    "Complete the cylinder insertion into the {B}."
+  ],
+  "unseen": [
+    "Fit the cylinder into the socket in a vertical orientation.",
+    "Reorient and insert the cylinder into its target socket."
+  ]
+}

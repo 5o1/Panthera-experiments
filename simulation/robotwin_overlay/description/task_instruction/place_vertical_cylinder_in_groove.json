@@ -1,0 +1,15 @@
+{
+  "seen": [
+    "Insert the {A} into the {B}.",
+    "Place the {A} inside the {B}.",
+    "Pick up the {A} and insert it into the {B}.",
+    "Move the {A} into the {B} and release it.",
+    "Put the {A} into the {B}.",
+    "Grasp the {A} and seat it in the {B}.",
+    "Lift the {A}, align it, and insert it into the {B}."
+  ],
+  "unseen": [
+    "Seat the {A} inside the {B}.",
+    "Transfer the {A} into the {B}."
+  ]
+}

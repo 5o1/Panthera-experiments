@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基于普通单目摄像头与人体关键点的 Panthera-HT 单臂遥操作</title>
+  <style>
+    @page { size: A4; margin: 17mm 18mm 19mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: #18212b; background: #fff;
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      font-size: 10.3pt; line-height: 1.72;
+    }
+    main { max-width: 174mm; margin: 0 auto; }
+    h1 { margin: 17mm 0 4mm; text-align: center; font-size: 21pt; line-height: 1.38; color: #132f49; }
+    .subtitle { text-align: center; color: #596775; margin-bottom: 10mm; }
+    h2 { margin: 8mm 0 3mm; padding-bottom: 1.4mm; border-bottom: 1px solid #9db2c5; color: #164d78; font-size: 14.5pt; }
+    h3 { margin: 5mm 0 1.7mm; color: #245f8b; font-size: 11.8pt; }
+    h2, h3, caption { break-after: avoid-page; page-break-after: avoid; }
+    p { margin: 0 0 2.7mm; text-align: justify; }
+    a { color: #125b94; text-decoration: none; overflow-wrap: anywhere; }
+    strong { color: #172f45; }
+    .abstract, .note, .warning, .evidence {
+      margin: 3mm 0; padding: 3.5mm 4.5mm; break-inside: avoid;
+      border-left: 4px solid #3b78a5; background: #f2f7fa;
+    }
+    .warning { border-left-color: #a14f3b; background: #fff4ef; }
+    .evidence { border-left-color: #398260; background: #f1f8f4; }
+    .keywords { margin-top: 2.5mm; }
+    table { width: 100%; margin: 4mm 0; border-collapse: collapse; font-size: 9.1pt; }
+    caption { margin-bottom: 1.5mm; text-align: center; color: #586775; font-size: 9pt; }
+    th, td { padding: 1.9mm 2.3mm; border: 1px solid #aab7c3; vertical-align: top; }
+    th { background: #e7f0f6; color: #173f60; text-align: left; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    code, .formula { font-family: Consolas, "Microsoft YaHei", monospace; }
+    code { overflow-wrap: anywhere; }
+    pre {
+      margin: 2.5mm 0 3.5mm; padding: 3mm 4mm; white-space: pre-wrap;
+      overflow-wrap: anywhere; border-radius: 2mm; background: #162432; color: #eef5fa;
+      font: 8.5pt/1.55 Consolas, "Microsoft YaHei", monospace; break-inside: avoid;
+    }
+    .formula { margin: 3mm 0; text-align: center; font-size: 10.6pt; }
+    figure { margin: 5mm 0 6mm; break-inside: avoid; page-break-inside: avoid; }
+    figcaption { margin-top: 1.7mm; text-align: center; color: #586775; font-size: 9pt; }
+    svg { display: block; width: 100%; height: auto; }
+    ul, ol { margin: 2mm 0 3mm 7mm; padding-left: 5mm; }
+    li { margin: 1mm 0; }
+    .metric { color: #9a3d30; font-weight: 700; }
+    .pass { color: #28724f; font-weight: 700; }
+    .pending { color: #8b6108; font-weight: 700; }
+    .small { color: #586775; font-size: 8.9pt; }
+    .refs { font-size: 8.8pt; }
+    .refs p { margin-bottom: 2mm; padding-left: 7mm; text-indent: -7mm; text-align: left; }
+    .step { margin: 3mm 0; padding: 3mm 4mm; border: 1px solid #acbac5; border-left: 4px solid #398260; break-inside: avoid; }
+    .step h3 { margin-top: 0; }
+    .page-break { break-before: page; page-break-before: always; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>基于普通单目摄像头与人体关键点的<br>Panthera-HT 单臂遥操作</h1>
+  <div class="subtitle">系统设计、摄像头与真机实验、安全边界 · Panthera 项目阶段性研究报告 · 资料截点：2026 年 9 月 15 日</div>
+
+  <section class="abstract">
+    <strong>摘要：</strong>本文记录 Panthera 项目早期的一项低成本遥操作实验：操作者面对笔记本顶部的普通 RGB 摄像头移动右臂，程序估计右肩、右肘和右腕的位置，再让一台 Panthera-HT 六轴机械臂跟随左右和上下运动。系统把摄像头与 MediaPipe 放在独立 Python 环境中，以 WebSocket 向 ROS 2 传输最新观测；ROS 2 节点检查数据格式，以启用时的人体和机器人位置为共同起点，忽略微小抖动，限制最大移动范围，并在数据中断后保持关闭。摄像头动作实验持续 364.3 s，共记录 87,628 条 ROS 消息，完成九个适用动作阶段。视觉程序平均每秒发出 18.35 条消息，其中平均每秒有 14.82 条能可靠识别右肩、右肘和右腕；与连接内最快帧相比，95% 的帧额外延迟不超过 13.59 ms。数据同时表明，静止时单目深度的波动与前后动作信号处在相近量级，手势分类也会把自然放松状态混入开合类别。因此首次真机验收只开放机器人 Y/Z 两轴，关闭 X、末端朝向和夹爪。该真机实验持续 166.7 s，完成静止、左右、上下、YZ 组合和停止保持五个阶段，共发送 66 条目标位置命令；静止与停止保持阶段均未发送命令，停止保持阶段的末端反馈 Y/Z 最大值与最小值之差为 0.093/0.241 mm。结果支持“普通单目摄像头可用于有限范围的单臂 Y/Z 相对遥操作”这一阶段结论，但尚不能支持单目 X 深度、末端朝向、视觉夹爪控制或摄像头驱动整套连续控制程序的真机可用性。
+    <div class="keywords"><strong>关键词：</strong>机器人遥操作；单目视觉；人体姿态估计；MediaPipe；ROS 2；机械臂控制；Panthera-HT</div>
+  </section>
+
+  <h2>1　研究问题与结论范围</h2>
+  <p>机械臂通常通过关节角、夹爪位置或夹爪移动速度接受命令。初学者若要让机械臂模仿人的手臂，需要先解决三个问题：摄像头怎样从图像得到肩、肘、腕的位置；人的动作怎样换算成机器人动作；看不清人体、网络消息堆积或识别错误时，怎样避免机器人继续执行旧动作。本文研究的设备是一台 Panthera-HT 六轴机械臂和一枚夹爪，输入设备只是笔记本自带的单目 RGB 摄像头。</p>
+  <p>本文的目标很窄：验证操作者右腕相对右肩的运动能否安全地控制机器人末端左右移动和上下移动，并记录不适合立即开放的能力。实验不包含物体抓取成功率、自动规划、强化学习或视觉—语言—动作模型。后来的圆柱入槽研究使用了本阶段留下的通信和安全基础设施，但不属于本文结果。</p>
+  <p>本文给出三项工程贡献。第一，建立从单目人体关键点到 ROS 2 机械臂夹爪目标位置的可测试链路，并把视觉 Python 环境与 ROS 环境隔离。第二，程序永远只处理最近一帧；数据中断或超时后保持关闭，必须由操作者重新启用。第三，摄像头动作实验和五阶段真机验收分别连续记录成一个文件，使每个参数选择都有对应数据，同时保留失败项。</p>
+
+  <h2>2　初学者需要先理解的概念</h2>
+  <h3>2.1　单目摄像头与人体关键点</h3>
+  <p>单目摄像头只有一个观察视点。每帧图像本身提供水平和垂直两个像素方向；距离摄像头多远没有像双目或深度相机那样的直接测量。MediaPipe Pose Landmarker 会从图像估计 33 个身体关键点，并同时给出图像中的位置和模型推测的三维位置；其中 12、14、16 分别对应右肩、右肘和右腕[1,3]。本项目读取这三个点，并以三点中最低的可见程度评分判断该帧能否使用[3]。代码把这个分数保存为 <code>pose_score</code>。</p>
+  <p>模型给出的三维点可以表达人体各部分的相对几何关系，但它仍由单张 RGB 图像推断，不能视作独立深度传感器的测量值。BlazePose 的原始工作面向实时设备推理，输出单人的 33 个关键点[1]；MediaPipe Hands 则采用掌部检测器和手部关键点模型两级结构，从单目 RGB 图像估计手部骨架[2]。这些能力降低了硬件门槛，也把遮挡、视角和深度歧义带进控制环。</p>
+
+  <h3>2.2　机器人怎样把目标位置变成六个关节角</h3>
+  <p>Panthera 机械臂有六个主要旋转关节。程序既可以用六个关节各自的角度描述机械臂，也可以用夹爪在房间中的位置和朝向描述它。机器人学把前一种描述称为“关节空间”，把后一种称为“笛卡尔空间”或“任务空间”。根据六个关节角计算夹爪位置叫正运动学；根据夹爪目标位置反求六个关节角叫逆运动学。多个关节组合可能让夹爪到达相近位置，所以程序还要防止关节突然跳到另一组解、超过转动范围或进入稍微移动夹爪就需要关节剧烈转动的姿势。最后一种姿势称为奇异位置。RelaxedIK 把到达目标、保持平滑、避免机械臂撞到自身和远离奇异位置一起纳入计算[7]。</p>
+  <p>早期真机实验使用 Panthera 官方 ROS 2 驱动[12]提供的目标位置接口 <code>/pos_cmd</code>。驱动收到一个目标后，会一直等待机械臂完成这次移动才处理下一条，所以后文称它为“等待完成的旧接口”。摄像头每秒可产生十几帧，而机械臂完成一次移动可能更久；若把每帧都排队，操作者停手后机械臂仍会继续执行旧目标。项目因此只保留最近的观测，并且同一时间最多发送一条目标位置命令。</p>
+
+  <h3>2.3　ROS 2 节点、话题和队列</h3>
+  <p>ROS 2 把系统拆成多个组件，称为节点。节点通过有名字的消息通道发布数据，其他节点订阅这些通道。这样的划分让视觉识别、坐标转换和硬件驱动可以分别测试。ROS 2 允许程序设置消息队列是保留最近几条还是全部保留，这组通信设置叫 QoS。传感器数据通常更重视及时得到新样本，因此适合小队列并允许丢弃旧样本[4,5]。</p>
+  <p>本项目的消息队列通常只放一条。WebSocket 网络线程又主动丢弃尚未处理的旧包，因此程序永远使用最近收到的状态。这样即使图像处理暂时变慢，也不会按顺序重放积压动作。WebSocket 是建立在 TCP 之上的双向消息协议[11]。项目使用它连接两个 Python 环境：一个环境安装 MediaPipe，另一个环境安装 ROS 2；两边不必使用完全相同的 Python 二进制组件版本。</p>
+
+  <figure>
+    <svg viewBox="0 0 980 355" role="img" aria-label="从摄像头到机械臂的系统数据流">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#356986"/></marker>
+        <style>.b{fill:#edf5f9;stroke:#356986;stroke-width:2}.s{fill:#f3f8f4;stroke:#398260;stroke-width:2}.d{fill:#fff4ef;stroke:#a14f3b;stroke-width:2}.t{font:17px 'Microsoft YaHei',sans-serif;fill:#173147}.u{font:14px 'Microsoft YaHei',sans-serif;fill:#526574}.a{stroke:#356986;stroke-width:2.3;marker-end:url(#arrow)}</style>
+      </defs>
+      <rect class="b" x="20" y="48" width="170" height="88" rx="12"/><text class="t" x="105" y="78" text-anchor="middle">RGB 摄像头</text><text class="u" x="105" y="105" text-anchor="middle">640×480，约 15–20 Hz</text>
+      <rect class="b" x="235" y="48" width="190" height="88" rx="12"/><text class="t" x="330" y="78" text-anchor="middle">MediaPipe</text><text class="u" x="330" y="103" text-anchor="middle">右肩／肘／腕与手部</text>
+      <rect class="b" x="470" y="48" width="190" height="88" rx="12"/><text class="t" x="565" y="78" text-anchor="middle">WebSocket bridge</text><text class="u" x="565" y="103" text-anchor="middle">校验并只保留最新包</text>
+      <rect class="s" x="705" y="48" width="235" height="88" rx="12"/><text class="t" x="822" y="78" text-anchor="middle">ROS 2 动作转换</text><text class="u" x="822" y="103" text-anchor="middle">建立起点、忽略抖动、限制范围</text>
+      <line class="a" x1="190" y1="92" x2="230" y2="92"/><line class="a" x1="425" y1="92" x2="465" y2="92"/><line class="a" x1="660" y1="92" x2="700" y2="92"/>
+      <rect class="s" x="705" y="215" width="235" height="88" rx="12"/><text class="t" x="822" y="245" text-anchor="middle">Panthera 官方驱动</text><text class="u" x="822" y="270" text-anchor="middle">/pos_cmd 与反馈</text>
+      <line class="a" x1="822" y1="136" x2="822" y2="210"/>
+      <rect class="d" x="235" y="215" width="425" height="88" rx="12"/><text class="t" x="447" y="245" text-anchor="middle">异常处理</text><text class="u" x="447" y="270" text-anchor="middle">看不清／断线／超时／故障 → 保持关闭</text>
+      <line class="a" x1="700" y1="259" x2="665" y2="259"/>
+      <text class="u" x="490" y="338" text-anchor="middle">虚线外部没有隐藏的动作队列；实时链路始终以最新状态为准</text>
+    </svg>
+    <figcaption>图 1　早期单目单臂遥操作的数据流与失效边界。视觉进程不能直接向机械臂发布命令。</figcaption>
+  </figure>
+
+  <h2>3　相关工作：它们怎样解决遥操作问题</h2>
+  <table>
+    <caption>表 1　相关方法、所解决的问题以及本项目的取舍</caption>
+    <tr><th>工作</th><th>具体方法</th><th>解决的问题</th><th>Panthera 的取舍</th></tr>
+    <tr><td>Vision Robotic Arm Gesture Recognition [8]</td><td>用 MediaPipe 计算人的肩角和肘角，再用这些角度控制 Panda 机械臂的指定关节。它还用手指距离除以手掌大小，减小人靠近或远离摄像头造成的读数变化。</td><td>只用普通摄像头就能快速演示人体控制机械臂。</td><td>本文同样使用普通 RGB 摄像头，并用手指距离除以掌宽；机械臂位置则由右腕相对右肩的移动量决定，不要求人的关节与机器人的某个关节一一对应。</td></tr>
+    <tr><td>AnyTeleop [6]</td><td>先根据相机位置计算手腕在房间中的目标位置，再单独把人手各关键点转换成机器人手指关节。手臂和手指由两套计算处理。</td><td>更换机器人手或模拟器时，可以保留前面的视觉处理，少重写一部分系统。</td><td>本文也把看见人体、计算目标和执行命令分开。普通单目摄像头不能像它的完整系统那样稳定确定手腕在房间中的三维位置，因此本文只控制相对左右和上下移动。</td></tr>
+    <tr><td>Humanoid Arm Retarget [9]</td><td>读取 Apple Vision Pro 测得的手腕位置和方向，反复计算机器人的关节角；每次计算从上一帧关节角开始，减少相邻帧突然跳到另一种姿势。</td><td>人体手臂和机器人手臂长度、关节结构不同时，仍让机器人夹爪跟随手腕并保持动作连续。</td><td>本文同样在启用时建立共同起点，并要求相邻结果连续。普通 RGB 摄像头不能稳定测得手腕的完整位置和方向，因此没有采用它的输入方案。</td></tr>
+    <tr><td>RelaxedIK [7]</td><td>每次计算关节角时，同时尽量让夹爪到达目标、让关节少跳动、避免机械臂撞到自身，并避开关节会剧烈转动的位置。</td><td>减少每帧单独求关节角时出现的姿势跳变、自碰撞或无解。</td><td>它为后续连续计算关节角提供参考。本次真机实验使用会等待每次移动完成的官方接口，没有实现 RelaxedIK 的自碰撞检查，也没有证明能避开关节剧烈转动的位置。</td></tr>
+    <tr><td>MoveIt Servo [10]</td><td>不断读取最新的位置或速度命令；超过规定时间没有新命令时，逐渐把速度降到零。它还可以接入碰撞检查。</td><td>让连续人工输入过期后停住，避免机器人一直执行最后一条速度命令。</td><td>本文采用“旧命令过期后保持当前位置”的原则。当前项目没有安装 MoveIt Servo，也没有得到与它相同的碰撞检查能力。</td></tr>
+  </table>
+  <p>这些参考工作提供可选设计，不构成 Panthera 的硬约束。输入设备、驱动语义和风险不同，直接复制参数会产生错误。例如 Vision Pro 能给出跟踪设备定义的空间位姿，而普通单目摄像头只能从图像估计身体关键点。本文因此先验证可观测的 Y/Z 相对位移，再决定是否扩大自由度。</p>
+
+  <h2>4　系统方法</h2>
+  <h3>4.1　视觉观测与消息协议</h3>
+  <p><code>vision_sender.py</code> 以 VIDEO 模式运行 Pose Landmarker 和 Gesture Recognizer。每帧保存一个不断增加的序号 <code>seq</code>、拍摄顺序时间、当前是否允许跟随、操作者是否要求把当前姿势设为新起点、右肩/肘/腕三维点、三个点中最低的可见程度评分、手势、拇指与食指的相对距离和当前实验阶段。摄像头原始图像交给 MediaPipe；只有给操作者看的窗口进行左右镜像，因此控制坐标不会随显示镜像而反转。</p>
+  <p>桥接节点拒绝协议版本错误、字段类型错误、NaN、无穷值、序号倒退和时间倒退的消息。Windows 与 WSL 的系统时间可能相差一个固定值，所以程序不直接用两边时钟相减来判断延迟。它先找出本次连接中到达最快的一帧，再计算其他帧比这帧多等了多久；多等超过 250 ms 的消息不能进入 ROS 2。这个数值只能发现网络中新增的等待，不能表示从相机拍摄到机械臂实际运动的全部耗时。</p>
+
+  <h3>4.2　以启用时的位置为起点</h3>
+  <p>启用遥操作时，系统同时记住当前人体姿势和当前机器人位置，并把它们当作共同起点。设右腕减右肩得到的向量为 <i>h</i>，刚启用时的向量为 <i>h</i><sub>0</sub>；机器人刚启用时的末端位置为 <i>p</i><sub>0</sub>。人体从起点移动了 Δ<i>h</i>=<i>h</i>−<i>h</i><sub>0</sub>。矩阵 <i>P</i> 负责转换相机与机器人的方向，三个缩放比例 <i>g</i> 决定人的动作会让机器人移动多少。初步计算为：</p>
+  <div class="formula">Δp<sub>raw</sub> = g ⊙ (P Δh)</div>
+  <p>这里“⊙”表示三个轴分别相乘。配置采用相机 <code>[x 向右, y 向下, z 远离相机]</code> 到机器人 <code>[x 向前, y 向左, z 向上]</code> 的变换：</p>
+  <div class="formula">P = [[0,0,−1], [1,0,0], [0,−1,0]]</div>
+  <p>首次真机使用的三个缩放比例为 <code>[0, 0.25, 0.12]</code>。第一个数是零，所以人的前后动作不会改变机器人的 X 位置；人的左右动作控制机器人 Y，人的上下动作控制机器人 Z。Y/Z 方向小于 2 mm 的目标变化全部忽略。变化超过 2 mm 时，先从其绝对值中扣掉 2 mm，再保留原方向。例如，计算得到向右 5 mm，实际交给下一步的是向右 3 mm。最后，Y 最多偏离起点 5 cm，Z 最多偏离起点 4 cm。</p>
+  <p>裁剪后的偏移使用指数移动平均：</p>
+  <div class="formula">f<sub>t</sub> = αx<sub>t</sub> + (1−α)f<sub>t−1</sub>，α = 0.25</div>
+  <p>本实验取 α=0.25，因此新目标中四分之一来自当前帧，四分之三来自上一帧结果。这样可以减小相邻帧的跳动，但机器人也会稍晚跟上人的动作。程序随后限制机械臂末端每秒最多移动多远，以及速度每秒最多增加多少。旧接口还使用两个不同的发令门槛：机器人与目标相差 6 mm 才开始发送命令，开始移动后要等误差降到 3 mm 以下才停止发送。两个门槛可以避免误差在同一个数值附近上下波动时反复启停。</p>
+
+  <figure>
+    <svg viewBox="0 0 960 320" role="img" aria-label="相对位置映射处理步骤">
+      <defs><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#3a6d8a"/></marker><style>.q{fill:#edf5f9;stroke:#3a6d8a;stroke-width:2}.r{fill:#f3f8f4;stroke:#398260;stroke-width:2}.x{font:16px 'Microsoft YaHei',sans-serif;fill:#173147}.y{font:13px 'Microsoft YaHei',sans-serif;fill:#586775}.l{stroke:#3a6d8a;stroke-width:2;marker-end:url(#a2)}</style></defs>
+      <rect class="q" x="10" y="70" width="145" height="90" rx="10"/><text class="x" x="82" y="100" text-anchor="middle">相对人体位移</text><text class="y" x="82" y="126" text-anchor="middle">腕 − 肩 − 基准</text>
+      <rect class="q" x="195" y="70" width="145" height="90" rx="10"/><text class="x" x="267" y="100" text-anchor="middle">换方向并缩放</text><text class="y" x="267" y="126" text-anchor="middle">前后方向不控制机器人</text>
+      <rect class="q" x="380" y="70" width="145" height="90" rx="10"/><text class="x" x="452" y="100" text-anchor="middle">忽略小变化</text><text class="y" x="452" y="126" text-anchor="middle">Y/Z 小于 2 mm 不动</text>
+      <rect class="q" x="565" y="70" width="145" height="90" rx="10"/><text class="x" x="637" y="100" text-anchor="middle">限制最远距离</text><text class="y" x="637" y="126" text-anchor="middle">Y ±5 cm, Z ±4 cm</text>
+      <rect class="r" x="750" y="70" width="195" height="90" rx="10"/><text class="x" x="847" y="100" text-anchor="middle">与上一帧混合</text><text class="y" x="847" y="126" text-anchor="middle">再限制移动速度</text>
+      <line class="l" x1="155" y1="115" x2="190" y2="115"/><line class="l" x1="340" y1="115" x2="375" y2="115"/><line class="l" x1="525" y1="115" x2="560" y2="115"/><line class="l" x1="710" y1="115" x2="745" y2="115"/>
+      <path d="M82 190 C260 270, 650 270, 847 190" fill="none" stroke="#9a3d30" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#a2)"/>
+      <text class="y" x="480" y="280" text-anchor="middle">每次重新启用都以当前人体姿态和当前机器人反馈建立新零点，避免跳向旧绝对坐标</text>
+    </svg>
+    <figcaption>图 2　位置目标的计算顺序。每一级都能通过诊断话题单独记录。</figcaption>
+  </figure>
+
+  <h3>4.3　姿态与夹爪：已经计算，但没有在首次真机中开放</h3>
+  <p>程序用肩、肘、腕建立右手坐标系。前臂单位方向作为局部 z 轴，上臂方向与前臂方向的叉积作为局部 x 轴，再用 z×x 得到局部 y 轴。三个互相垂直的单位轴构成 3×3 旋转矩阵。手臂接近完全伸直时，上臂与前臂近似共线，叉积接近零，手臂所在平面的法向无法稳定确定；此时桥接器保留上一帧有效朝向。内部旋转用矩阵和 ROS 顺序 <code>[x,y,z,w]</code> 四元数处理，最后才转换成 roll、pitch、yaw。</p>
+  <p>这套数学实现通过了单元测试，但配置 <code>enable_orientation=false</code>，所以真机启动时的末端朝向保持不变。原因来自数据：pitch 动作阶段为了收集 239 个有效姿态帧耗时约 54.9 s，明显长于多数约 12–15 s 的阶段，说明集成摄像头视角下存在较多不可用帧。</p>
+  <p>程序用拇指尖到食指尖的画面距离除以掌宽，减小手掌靠近或远离摄像头造成的数值变化；通用手势分类器只用于对照。刻意捏合时，这个比值会形成较高和较低的两组数值，但人在自然静止或普通摆臂时也会长时间落入较低的一组。如果直接据此闭合夹爪，普通动作也可能误触发。因此首次真机配置不发布任何夹爪命令，对应的两个开关是 <code>publish_gripper_commands=false</code> 和关闭真实夹爪发布者。</p>
+
+  <h3>4.4　出错后保持关闭，直到操作者重新启用</h3>
+  <p>程序内部记录“已关闭、正在确定起点、正在跟随、数据过期后关闭、机械臂故障后关闭”五种状态。代码中的名称分别是 <code>DISABLED</code>、<code>CALIBRATING</code>、<code>TRACKING</code>、<code>STALE_LOCK</code> 和 <code>FAULT_LOCK</code>。画面看不清、人体姿势丢失、WebSocket 断开、0.5 s 没有新目标或机械臂报告故障时，程序停止发送新目标并保持关闭。数据恢复也不会自动开动；操作者必须先确认关闭，再重新启用，系统才会以当时的人体姿势和机器人位置建立新起点。这样可避免相机重新看到人体时仍沿用中断前的起点。</p>
+  <p>旧 <code>/pos_cmd</code> 驱动开始执行一条命令后，软件停止未必能立刻打断它，所以每条命令最多只让末端移动 12 mm，并要求操作者能够立即触及物理急停。出错后保持关闭只能防止继续发送新命令，不能替代物理急停，也不能保证机械臂不会碰撞。</p>
+
+  <h2>5　实验设计</h2>
+  <h3>5.1　为什么按有效帧推进</h3>
+  <p>若每个动作简单执行“等待 15 秒”，姿势识别失败的时间也会算进实验，不同阶段得到的有效样本数无法比较。项目的 <code>ExperimentSequence</code> 只在人体姿势可用、可见程度评分达标且记录程序仍在运行时才把剩余帧数减一。阶段名称随每帧一起保存，ROS 消息从头到尾写入同一个 rosbag 文件。摄像头实验在首阶段人工确认一次，随后用 6 s 中文倒计时切换动作；真机实验每阶段按一次空格，同时载入阶段并允许跟随，阶段结束后自动关闭。采集期间不靠固定等待时间决定收集多少数据。</p>
+
+  <h3>5.2　摄像头表征</h3>
+  <p>摄像头表征使用 640×480 MJPG 图像和集成在笔记本屏幕顶部的摄像头。计划包含静止、前后、左右、上下、弯伸、绕手臂转动、前后抬腕、左右转腕、捏合和日常打字十个阶段。前九个阶段完成；打字阶段因摄像头位置看不到手腕与手部，被记为“不适用”，没有计入识别失败。完整记录持续 364.3 s，包含 87,628 条消息。每个位置、静止和捏合阶段计划采集 300 个有效帧，每个弯伸和朝向阶段计划采集 240 个有效帧；离线程序按阶段结束位置分割数据后得到 299 或 239 条主要观测。</p>
+
+  <h3>5.3　安全 Y/Z 真机验收</h3>
+  <p>真机实验固定使用最保守的一组设置，配置文件名为 <code>safe</code>：人的前后动作不控制机器人，末端朝向和夹爪也不跟随。五个阶段依次为右腕静止、左右三次、上下三次、在 YZ 平面画小圆三次、停止人体动作并保持。每帧都记录它属于预热、正式采集还是等待；等待期间保持关闭。实验还同时记录人体观测、每一步转换后的目标、末端反馈、关节反馈、机械臂状态和实际发送的 <code>/pos_cmd</code>。</p>
+  <p>这次实验使用官方阻塞点位路径。后续开发的 50 Hz 连续逆运动学后端没有参加这次实验。二者必须分开解释：本节能够验证相机、桥接、映射与真机的方向和停止保持；不能验证连续后端在真实视觉输入下的完整闭环性能。</p>
+
+  <figure>
+    <svg viewBox="0 0 960 285" role="img" aria-label="真机实验阶段流程">
+      <defs><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#3a6d8a"/></marker><style>.c{fill:#edf5f9;stroke:#3a6d8a;stroke-width:2}.h{fill:#fff4ef;stroke:#a14f3b;stroke-width:2}.z{font:15px 'Microsoft YaHei',sans-serif;fill:#173147}.v{font:12px 'Microsoft YaHei',sans-serif;fill:#596775}.k{stroke:#3a6d8a;stroke-width:2;marker-end:url(#a3)}</style></defs>
+      <rect class="c" x="12" y="75" width="150" height="82" rx="10"/><text class="z" x="87" y="104" text-anchor="middle">静止</text><text class="v" x="87" y="130" text-anchor="middle">检查噪声发令</text>
+      <rect class="c" x="204" y="75" width="150" height="82" rx="10"/><text class="z" x="279" y="104" text-anchor="middle">左右</text><text class="v" x="279" y="130" text-anchor="middle">验证机器人 Y</text>
+      <rect class="c" x="396" y="75" width="150" height="82" rx="10"/><text class="z" x="471" y="104" text-anchor="middle">上下</text><text class="v" x="471" y="130" text-anchor="middle">验证机器人 Z</text>
+      <rect class="c" x="588" y="75" width="150" height="82" rx="10"/><text class="z" x="663" y="104" text-anchor="middle">YZ 小圆</text><text class="v" x="663" y="130" text-anchor="middle">验证组合输入</text>
+      <rect class="h" x="780" y="75" width="168" height="82" rx="10"/><text class="z" x="864" y="104" text-anchor="middle">停止保持</text><text class="v" x="864" y="130" text-anchor="middle">检查旧目标追赶</text>
+      <line class="k" x1="162" y1="116" x2="199" y2="116"/><line class="k" x1="354" y1="116" x2="391" y2="116"/><line class="k" x1="546" y1="116" x2="583" y2="116"/><line class="k" x1="738" y1="116" x2="775" y2="116"/>
+      <text class="v" x="480" y="205" text-anchor="middle">每阶段：等待（禁用）→ 一次按键 → 预热有效帧 → 正式有效帧 → 自动禁用</text>
+      <text class="v" x="480" y="238" text-anchor="middle">整个 case 共用一个驱动进程、一个视觉进程和一个 rosbag</text>
+    </svg>
+    <figcaption>图 3　首次仅开放 Y/Z 的真机验收顺序。每个阶段开始前都由操作者确认。</figcaption>
+  </figure>
+
+  <h2>6　实验结果</h2>
+  <h3>6.1　摄像头与网络链路</h3>
+  <table>
+    <caption>表 2　摄像头表征的主要结果</caption>
+    <tr><th>指标</th><th>结果</th><th>解释</th></tr>
+    <tr><td>完整录制</td><td>364.3 s；87,628 条 ROS 消息</td><td>一个 ROS 消息记录文件连续覆盖九个适用阶段和阶段间隔。</td></tr>
+    <tr><td>视觉特征频率</td><td><span class="metric">18.35 Hz</span></td><td><code>/teleop/depth_features</code> 与分数类消息的全程平均频率。</td></tr>
+    <tr><td>有效人体位姿频率</td><td><span class="metric">14.82 Hz</span></td><td><code>/teleop/human_pose</code> 只在姿态可用时发布，因此低于原始特征频率。</td></tr>
+    <tr><td>95% 的传输额外延迟不超过</td><td><span class="metric">13.59 ms</span></td><td>它只计算帧在网络传输中比最快帧多等了多久，不包括相机处理和机械臂移动时间。</td></tr>
+    <tr><td>左右动作中，中间 90% 的人体 X 数据范围</td><td>13.86 cm</td><td>每移动 1 cm 映射成机器人 Y 移动 0.25 cm，因此典型目标范围约 3.3 cm。</td></tr>
+    <tr><td>上下动作中，中间 90% 的人体 Y 数据范围</td><td>10.78 cm</td><td>每移动 1 cm 映射成机器人 Z 移动 0.12 cm，因此典型目标范围约 1.1 cm。</td></tr>
+    <tr><td>静止时，模型估计的腕肩前后距离波动</td><td>中间 90% 跨度为 2.75 cm</td><td>主动前后移动时的对应跨度只有 4.26 cm，二者相差不够大。</td></tr>
+  </table>
+  <p>最关键的负结果来自前后距离。操作者静止时，模型估计的腕肩前后距离仍然会波动；这个波动范围已经达到主动前后动作信号的约 65%。若直接用它控制机器人 X，操作者没有明显前后动作时也可能产生目标变化。项目因此关闭 X 控制。另一种做法是把更多连续帧平均起来，让曲线看上去更平滑，但机器人会更晚响应，而且平滑后的变化仍不一定来自真实动作，所以本文没有采用这种补救办法。</p>
+  <p>姿态和夹爪也没有达到真机开放条件。pitch 阶段收集有效位姿所需时间明显延长，反映遮挡或手臂平面退化。捏合比例在刻意动作中可分出开合两侧，但其他阶段也落入闭合区间，若仅靠阈值会产生误触发。集成摄像头无法拍到正常打字时的手腕，说明实验能力受相机安装位置直接限制。</p>
+
+  <h3>6.2　只开放左右和上下运动的真机结果</h3>
+  <table>
+    <caption>表 3　首次真机验收的量化结果</caption>
+    <tr><th>阶段或全局指标</th><th>结果</th><th>验收含义</th></tr>
+    <tr><td>完整录制</td><td>166.7 s；55,789 条消息；66 条 <code>/pos_cmd</code></td><td>五个阶段全部完成；66 条命令都在预热或正式采集期间发送，等待期间为 0 条。</td></tr>
+    <tr><td>左右阶段</td><td>目标 Y 的最大值与最小值相差 <span class="metric">53.7 mm</span></td><td>人体左右运动能够形成机器人 Y 目标。</td></tr>
+    <tr><td>上下阶段</td><td>目标 Z 的最大值与最小值相差 <span class="metric">39.4 mm</span></td><td>人体上下运动能够形成机器人 Z 目标。</td></tr>
+    <tr><td>YZ 组合阶段</td><td>目标 Y/Z 的最大值与最小值分别相差 <span class="metric">71.2/44.5 mm</span></td><td>左右和上下可以同时控制；数值已经过移动范围限制和逐帧平滑。</td></tr>
+    <tr><td>静止阶段</td><td>目标 Y/Z 3.78/1.68 mm；反馈 Y/Z 0/0.054 mm；0 条命令</td><td>小幅视觉波动没有越过发令门槛。</td></tr>
+    <tr><td>停止保持阶段</td><td>反馈 Y/Z <span class="metric">0.093/0.241 mm</span>；0 条命令</td><td>停止人体动作后没有继续发送积压点位。</td></tr>
+    <tr><td>目标达到最远允许位置的帧</td><td>2.81%</td><td>少量目标被限制在 Y ±5 cm 或 Z ±4 cm 内。</td></tr>
+    <tr><td>因移动过快而被程序放慢的帧</td><td>35.45%</td><td>超过三分之一的目标变化被放慢，说明首次真机设置明显限制了响应速度。</td></tr>
+    <tr><td>95% 的传输额外延迟不超过</td><td>14.89 ms</td><td>大多数帧远低于程序拒绝旧数据所用的 250 ms 门槛。</td></tr>
+  </table>
+  <div class="evidence"><strong>阶段判定：</strong><span class="pass">首次只开放 Y/Z 的真机验收通过</span>。该判定只覆盖移动方向、最大移动范围、静止时不发令、阶段之间关闭和停止后的保持。它不覆盖碰撞、抓取任务、X 深度、末端朝向、视觉夹爪或长时间重复可靠性。</div>
+  <p>所有真机命令的 <code>mode1=0</code>、<code>mode2=0</code>、<code>gripper=-1</code>，与关闭姿态特殊模式和关闭夹爪输出的设计一致。全程 X 目标范围为 1.78 mm，这来自各阶段重新标定时机器人实测基准略有不同；单个阶段内部的 X 映射偏移保持为零。</p>
+  <p>正常退出时，程序要求六个关节回到 0 rad。驱动报告移动成功，但记录文件最后一帧显示第三关节仍为 0.0352 rad（约 2.0°）。驱动所说的“成功”只表示它认为已经足够接近目标。后续脚本因此会再次读取每个关节的实际位置；只有六个关节与目标的差都没有超过允许范围，退出检查才通过。</p>
+
+  <figure>
+    <svg viewBox="0 0 960 360" role="img" aria-label="真机实验关键数值柱状图">
+      <style>.axis{stroke:#657787;stroke-width:1.5}.bar1{fill:#3e7da6}.bar2{fill:#59a27b}.lab{font:14px 'Microsoft YaHei',sans-serif;fill:#24394b}.val{font:14px 'Microsoft YaHei',sans-serif;font-weight:700;fill:#173147}.grid{stroke:#d7e0e6;stroke-width:1}</style>
+      <text class="lab" x="20" y="30">目标最大值与最小值之差（mm）</text>
+      <line class="axis" x1="100" y1="285" x2="920" y2="285"/><line class="axis" x1="100" y1="55" x2="100" y2="285"/>
+      <line class="grid" x1="100" y1="227" x2="920" y2="227"/><line class="grid" x1="100" y1="170" x2="920" y2="170"/><line class="grid" x1="100" y1="112" x2="920" y2="112"/><line class="grid" x1="100" y1="55" x2="920" y2="55"/>
+      <text class="lab" x="70" y="290">0</text><text class="lab" x="60" y="232">20</text><text class="lab" x="60" y="175">40</text><text class="lab" x="60" y="117">60</text><text class="lab" x="60" y="60">80</text>
+      <rect class="bar1" x="160" y="130.6" width="100" height="154.4"/><text class="val" x="210" y="122" text-anchor="middle">53.7</text><text class="lab" x="210" y="315" text-anchor="middle">左右阶段 Y</text>
+      <rect class="bar2" x="350" y="171.7" width="100" height="113.3"/><text class="val" x="400" y="163" text-anchor="middle">39.4</text><text class="lab" x="400" y="315" text-anchor="middle">上下阶段 Z</text>
+      <rect class="bar1" x="540" y="80.3" width="100" height="204.7"/><text class="val" x="590" y="72" text-anchor="middle">71.2</text><text class="lab" x="590" y="315" text-anchor="middle">组合阶段 Y</text>
+      <rect class="bar2" x="730" y="157.1" width="100" height="127.9"/><text class="val" x="780" y="149" text-anchor="middle">44.5</text><text class="lab" x="780" y="315" text-anchor="middle">组合阶段 Z</text>
+      <text class="lab" x="480" y="350" text-anchor="middle">数值来自 robot_yz_acceptance_20260902_004734 的正式阶段</text>
+    </svg>
+    <figcaption>图 4　真机实验中开放轴的目标运动范围。柱高不表示跟踪误差。</figcaption>
+  </figure>
+
+  <h3>6.3　后续连续控制组件的证据边界</h3>
+  <p>等待每个目标完成的旧接口在真机记录中平均每秒只产生约 0.79 条命令，所以机械臂跟随较慢。项目后来增加了连续控制程序：它每秒 50 次读取最近的末端目标并计算六个关节角，<code>ros2_control</code> 每秒 200 次把命令写入 Panthera SDK。正常关节速度设为 0.6 rad/s，任何设置不得超过硬件允许的 1.0 rad/s，关节速度每秒最多增加 2.0 rad/s。纯软件测试检查了到达目标、目标停止更新后保持当前位置、连续三次计算失败后停止以及人工复位；单独的真机小动作实验检查了 0.005 rad 往返，以及 0.015 rad 动作取消后的保持。</p>
+  <p>这些结果支持连续控制组件已经实现基础行为，仍没有完成“真实摄像头 → mapper → 连续后端 → 真机”的最终 Y/Z 长流程。本文不把组件测试扩写成完整视觉闭环通过。这个区分对初学者很重要：单元测试、模拟器测试、硬件接口小动作和完整任务测试回答的是不同问题。</p>
+
+  <h2>7　讨论</h2>
+  <h3>7.1　普通摄像头做到了什么</h3>
+  <p>实验表明，普通单目摄像头足以提供可用的右腕横向和纵向相对运动。每次启用时，程序把当时的人体姿势和机器人位置当作共同起点，因此操作者不必站在固定的绝对位置。方向转换让人的左右、上下动作对应机器人的 Y、Z 方向；忽略 2 mm 以内的小变化以及使用 6 mm/3 mm 两个发令门槛，可防止静止时的微小波动触发命令。WebSocket 与 ROS 2 的分层让每一段都可单独观察，连续消息记录则把人体输入、中间计算、命令和反馈放在同一时间轴上。</p>
+
+  <h3>7.2　为什么 X、姿态和夹爪仍然关闭</h3>
+  <p>X 方向主要依赖单目摄像头推测前后距离，实验中的静止波动与主动前后信号过于接近。末端朝向需要肩、肘、腕三点确定手臂所在平面；手臂伸直或关键点被遮挡时，这个平面无法稳定计算。夹爪信号来自画面中很小的手指，集成摄像头的距离和位置又容易使手部离开画面。前后距离、手臂朝向和手指开合失败的原因不同，不能都靠增加连续帧平均数量来解决。</p>
+  <p>若以后需要这些控制，可以先改变传感器条件：为 X 增加深度相机或双目，或只在操作者按住指定按钮时更新前后位置；为末端朝向使用能稳定测量手腕位置和朝向的跟踪设备；为夹爪提供近距离手部相机、手套或实体按钮。每个新增控制方向都应先只计算目标、不连接机械臂，再单独做一个方向的真机实验，最后才组合使用。</p>
+
+  <h3>7.3　安全机制仍缺什么</h3>
+  <p>当前系统可以限制最远移动距离、移动速度、加速度和数据最长允许多久不更新；机械臂报告故障后也会停止发送新命令。它没有建立桌面、物体和机械臂之间的完整碰撞模型，没有测试奇异位置附近的运动，也不能根据接触力自动停止。旧驱动开始执行一条命令后，软件停止很难立即插入，因此物理急停一直是必要条件。后续连续控制实验还要检查关节是否超过范围、命令位置与实际位置相差多少、出错后是否保持关闭，以及正常退出和意外退出的行为。</p>
+
+  <h3>7.4　这些结果还不能说明什么</h3>
+  <p>实验只使用一名操作者、一个集成摄像头、一台机械臂和一次主要真机长流程，所以无法判断换人、换光照、改变相机位置或更换设备后会有多大变化。最大值与最小值之差容易被单个异常样本放大；摄像头实验因此还报告了去掉最低和最高各 5% 数据后的中间 90% 范围，但真机目标范围只能沿用现有记录中的最大值与最小值。网络附加延迟也只是相对最快帧的数值，不能代替从相机拍摄到机械臂实际运动的全部耗时。实验没有外部运动捕捉设备提供准确参考位置，所以无法计算人体关键点和机器人末端的绝对误差。</p>
+
+  <h2 class="page-break">8　初学者复现实验教程</h2>
+  <div class="warning"><strong>安全声明：</strong>下面先给出纯软件实验和“只计算目标、不向机械臂发命令”的相机实验。它们不会启动 Panthera 驱动。真机部分只说明开始实验前必须通过的检查，不提供绕过确认的命令。执行真机前必须阅读项目检查表、确认串口只被一个驱动占用、清空机械臂周围、准备物理急停，并由现场操作者明确授权。</div>
+
+  <div class="step">
+    <h3>步骤 1：认识仓库入口</h3>
+    <p>进入项目后先读 README 和五份与本实验直接相关的文档。这样可以先看到已验证边界，再读代码。</p>
+    <pre>cd ~/panthera
+less README.md
+less docs/00_ros2_manual_motion.md
+less docs/01_next_stage_vision_teleop_todo.md
+less docs/04_real_hardware_experiment_checklist.md
+less docs/06_data_collection_cases.md</pre>
+    <p>预期结果：README 明确写出默认不会向真机发命令、只允许 Y/Z 跟随、X/末端朝向/夹爪关闭，并且程序永远只使用最新目标。</p>
+  </div>
+
+  <div class="step">
+    <h3>步骤 2：运行不接相机、不接机械臂的端到端 Demo</h3>
+    <pre>cd ~/panthera
+./run_vision_teleop_demo.sh synthetic</pre>
+    <p>脚本启动合成视觉发送器、WebSocket bridge、mapper 和假机器人反馈。默认 <code>publish_robot_commands=false</code>，mapper 不创建真实 <code>/pos_cmd</code> 发布者。另开终端观察目标：</p>
+    <pre>source ~/panthera/tools/activate_panthera.sh
+ros2 topic echo /teleop/debug_target</pre>
+    <p>预期结果：目标位置随合成信号变化；终止后没有机械臂驱动进程。若想自动验收同一链路，运行：</p>
+    <pre>cd ~/panthera
+./tools/test_vision_pipeline_mock.sh</pre>
+  </div>
+
+  <div class="step">
+    <h3>步骤 3：用单元测试理解数学和安全逻辑</h3>
+    <pre>cd ~/panthera
+PYTHONPATH=ros2_ws/src/panthera_vision_teleop \
+  /usr/bin/python3 -m pytest -q ros2_ws/src/panthera_vision_teleop/test</pre>
+    <p>阅读顺序建议为 <code>vision_protocol.py</code>、<code>rotation_utils.py</code>、<code>teleop_logic.py</code>、<code>vision_bridge_node.py</code>、<code>teleop_mapper_node.py</code>。前三个文件不依赖 ROS 运行时，适合逐个函数调试。</p>
+  </div>
+
+  <div class="step">
+    <h3>步骤 4：接入摄像头，但只计算目标</h3>
+    <p>先确认 WSL 能看到 <code>/dev/video*</code>，再运行：</p>
+    <pre>cd ~/panthera
+./run_vision_teleop_demo.sh camera safe</pre>
+    <p>命令末尾的 <code>safe</code> 是这组保守设置的配置文件名。窗口中的画面为了操作习惯左右镜像，发送坐标仍采用原始相机方向。按 Space 启用或关闭计算，按 R 以当前姿势重新建立起点，按 Esc 正常退出。观察 <code>/teleop/debug_target</code> 和 <code>/teleop/state</code>；X 应保持启用时的数值，末端朝向也应保持不变。</p>
+  </div>
+
+  <div class="step">
+    <h3>步骤 5：连续记录一组摄像头动作</h3>
+    <pre>cd ~/panthera
+./tools/run_data_collection_case.sh camera_characterization</pre>
+    <p>首阶段按 Enter 后，后续阶段按中文倒计时自动进入。程序按有效帧计数，所有阶段保存在一个 rosbag 文件中；rosbag 是 ROS 2 用来连续保存各个消息通道的记录格式。采集完成后运行：</p>
+    <pre>./tools/analyze_vision_teleop.py bags/实际生成的目录名</pre>
+    <p>检查 <code>analysis/summary.json</code>、<code>samples.csv</code> 和 <code>teleop_vectors.png</code>。先比较操作者静止时的波动和主动动作产生的变化，再决定人的动作应缩小多少后交给机器人；不要只看窗口中“似乎能动”。</p>
+  </div>
+
+  <div class="step">
+    <h3>步骤 6：理解真机门禁</h3>
+    <p>真机入口是 <code>./tools/run_data_collection_case.sh robot_yz_acceptance</code>，但只有在现场人员重新确认硬件、急停和当前授权后才能运行。它固定使用只开放 Y/Z 的保守设置。每个阶段只需按一次 Space；等待时没有命令，阶段结束自动关闭。画面看不清、断线、长时间没有新数据或机械臂故障后，都必须由操作者重新启用。首次学习时应先查看已有记录，不要重复启动真机。</p>
+  </div>
+
+  <h2>9　数据、代码与可复核性</h2>
+  <table>
+    <caption>表 4　本文结论对应的项目内证据</caption>
+    <tr><th>证据</th><th>位置</th><th>用途</th></tr>
+    <tr><td>项目状态与结论</td><td><a href="01_next_stage_vision_teleop_todo.md">docs/01_next_stage_vision_teleop_todo.md</a></td><td>阶段结论、参数来源、已完成与未完成项。</td></tr>
+    <tr><td>方法初始设计</td><td><a href="Panthera-HT%20单目视觉手臂与手势遥操作实验计划.md">单目视觉实验计划</a></td><td>坐标约定、公式、消息结构和分阶段设计。</td></tr>
+    <tr><td>开源方法调查</td><td><a href="02_open_source_teleoperation_research.md">docs/02_open_source_teleoperation_research.md</a></td><td>相关项目的代码级比较。</td></tr>
+    <tr><td>摄像头表征记录</td><td><a href="../bags/camera_characterization_20260902_001702/">bags/camera_characterization_20260902_001702/</a></td><td>ROS 原始消息、实验计划、状态、CSV、JSON 和曲线。</td></tr>
+    <tr><td>只开放 Y/Z 的真机记录</td><td><a href="../bags/robot_yz_acceptance_20260902_004734/">bags/robot_yz_acceptance_20260902_004734/</a></td><td>五阶段命令、机器人实测位置和状态证据。</td></tr>
+    <tr><td>视觉与 ROS 源码</td><td><a href="https://github.com/5o1/Panthera-experiments/tree/a0a2aa54398cc15e6b17bca0c36e9d01e46d0c61/ros2_ws/src/panthera_vision_teleop">Git 提交 a0a2aa5</a></td><td>本文分析对应的已提交代码快照。</td></tr>
+  </table>
+  <p>本文分析的遥操作代码对应项目提交 a0a2aa5[13]。ROS 消息记录文件当前位于本地项目工作区，未出现在该提交的文件树中。因此代码可以通过远程提交复核，原始实验数据需要访问本地归档。论文没有把后续修改过但尚未提交的代码写成 2026 年 9 月 2 日实验时已经使用的版本。</p>
+
+  <h2>10　结论</h2>
+  <p>本项目用普通笔记本摄像头、MediaPipe、WebSocket 和 ROS 2 建立了 Panthera-HT 单臂遥操作原型。一次摄像头长流程确认左右和上下动作具有可用信号，同时暴露单目摄像头估计前后距离、手臂朝向和手指开合时的限制。随后，只开放 Y/Z 的真机实验完成五个阶段，静止和停止保持期间均未继续发送目标位置命令，支持有限范围 Y/Z 相对遥操作的阶段性可行性。</p>
+  <p>当前最重要的后续工作是完成真实摄像头到非阻塞连续后端的整链真机验收，并增加碰撞、关节限位、奇异性和端到端时延测量。X、姿态和夹爪应继续保持关闭，直到传感器条件或独立实验给出新的证据。对初学者而言，本实验的核心经验是：先测量信号与噪声，再决定开放自由度；把“没有继续发命令”与“机器人能够立即安全停止”区分开；每一项结论都要指向代码、配置和连续数据记录。</p>
+
+  <h2 id="references">参考文献</h2>
+  <section class="refs">
+    <p>[1] V. Bazarevsky, I. Grishchenko, K. Raveendran, et al. “BlazePose: On-device Real-time Body Pose Tracking.” arXiv:2006.10204, 2020. <a href="https://arxiv.org/abs/2006.10204">https://arxiv.org/abs/2006.10204</a>.</p>
+    <p>[2] F. Zhang, V. Bazarevsky, A. Vakunov, et al. “MediaPipe Hands: On-device Real-time Hand Tracking.” arXiv:2006.10214, 2020. <a href="https://arxiv.org/abs/2006.10214">https://arxiv.org/abs/2006.10214</a>.</p>
+    <p>[3] Google AI Edge. “Pose landmark detection guide.” <a href="https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker">https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker</a>; “Landmark API.” <a href="https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/components/containers/Landmark">https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/components/containers/Landmark</a>. 访问日期：2026-09-15.</p>
+    <p>[4] S. Macenski, T. Foote, B. Gerkey, C. Lalancette, and W. Woodall. “Robot Operating System 2: Design, Architecture, and Uses In The Wild.” <i>Science Robotics</i>, 7(66), eabm6074, 2022. DOI: <a href="https://doi.org/10.1126/scirobotics.abm6074">10.1126/scirobotics.abm6074</a>.</p>
+    <p>[5] Open Robotics. “Quality of Service settings — ROS 2 Humble documentation.” <a href="https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html">https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html</a>. 访问日期：2026-09-15.</p>
+    <p>[6] Y. Qin, W. Yang, B. Huang, et al. “AnyTeleop: A General Vision-Based Dexterous Robot Arm-Hand Teleoperation System.” <i>Robotics: Science and Systems XIX</i>, 2023. <a href="https://www.roboticsproceedings.org/rss19/p015.pdf">论文 PDF</a>; <a href="https://arxiv.org/abs/2307.04577">arXiv:2307.04577</a>.</p>
+    <p>[7] D. Rakita, B. Mutlu, and M. Gleicher. “RelaxedIK: Real-time Synthesis of Accurate and Feasible Robot Arm Motion.” <i>Robotics: Science and Systems XIV</i>, 2018. DOI: <a href="https://doi.org/10.15607/RSS.2018.XIV.043">10.15607/RSS.2018.XIV.043</a>.</p>
+    <p>[8] e-candeloro. “Vision-Robotic-Arm-Gesture-Recognition.” GitHub repository. <a href="https://github.com/e-candeloro/Vision-Robotic-Arm-Gesture-Recognition">https://github.com/e-candeloro/Vision-Robotic-Arm-Gesture-Recognition</a>. 访问日期：2026-09-15.</p>
+    <p>[9] Hao-Starrr. “humanoid-arm-retarget: Humanoid robot arms retarget algorithm with VisionPro app.” GitHub repository. <a href="https://github.com/Hao-Starrr/humanoid-arm-retarget">https://github.com/Hao-Starrr/humanoid-arm-retarget</a>. 访问日期：2026-09-15.</p>
+    <p>[10] MoveIt 2. “ServoNode source: stale pose command and smooth halt.” <a href="https://moveit.picknik.ai/main/api/html/servo__node_8cpp_source.html">https://moveit.picknik.ai/main/api/html/servo__node_8cpp_source.html</a>; “Realtime Arm Servoing tutorial.” <a href="https://moveit.github.io/moveit_tutorials/doc/realtime_servo/realtime_servo_tutorial.html">MoveIt tutorial</a>. 访问日期：2026-09-15.</p>
+    <p>[11] I. Fette and A. Melnikov. “The WebSocket Protocol.” RFC 6455, IETF, 2011. DOI: <a href="https://doi.org/10.17487/RFC6455">10.17487/RFC6455</a>.</p>
+    <p>[12] HighTorque Robotics. “Panthera-HT_ROS2.” GitHub repository. <a href="https://github.com/HighTorque-Robotics/Panthera-HT_ROS2">https://github.com/HighTorque-Robotics/Panthera-HT_ROS2</a>. 访问日期：2026-09-15.</p>
+    <p>[13] Panthera 项目. “Panthera vision teleoperation demo.” GitHub commit a0a2aa54398cc15e6b17bca0c36e9d01e46d0c61, 2026-09-02. <a href="https://github.com/5o1/Panthera-experiments/tree/a0a2aa54398cc15e6b17bca0c36e9d01e46d0c61">代码快照</a>.</p>
+  </section>
+</main>
+</body>
+</html>

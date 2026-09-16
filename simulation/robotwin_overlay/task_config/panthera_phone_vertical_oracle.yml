@@ -1,0 +1,51 @@
+render_freq: 0
+episode_num: 4
+use_seed: false
+save_freq: 5
+embodiment: [panthera_phone]
+language_num: 7
+planner_backend: mplib
+static_friction: 1.2
+dynamic_friction: 1.0
+gripper_static_friction: 8.0
+gripper_dynamic_friction: 6.0
+restitution: 0
+grasp_quaternion_wxyz: [0.5, -0.5, 0.5, 0.5]
+task_randomization:
+  cylinder_x_base_m: -0.25
+  cylinder_y_base_m: -0.10
+  cylinder_x_m: 0.015
+  cylinder_y_m: 0.010
+  groove_x_base_m: -0.25
+  groove_y_base_m: -0.25
+  groove_x_m: 0.015
+  groove_y_m: 0.010
+domain_randomization:
+  random_background: true
+  cluttered_table: false
+  clean_background_rate: 0.20
+  random_head_camera_dis: 0.015
+  random_table_height: 0
+  random_light: true
+  crazy_random_light_rate: 0.02
+camera:
+  head_camera_type: PhoneSRT_Center4_3_Wide
+  wrist_camera_type: D435
+  collect_head_camera: true
+  collect_wrist_camera: false
+data_type:
+  rgb: true
+  third_view: false
+  depth: false
+  pointcloud: false
+  observer: false
+  endpose: true
+  qpos: true
+  mesh_segmentation: false
+  actor_segmentation: false
+pcd_down_sample_num: 1024
+pcd_crop: true
+save_path: ../data
+clear_cache_freq: 4
+collect_data: false
+eval_video_log: false

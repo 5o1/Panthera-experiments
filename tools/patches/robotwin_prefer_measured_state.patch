@@ -1,0 +1,14 @@
+diff --git a/robotwin/envs/vector_env.py b/robotwin/envs/vector_env.py
+--- a/robotwin/envs/vector_env.py
++++ b/robotwin/envs/vector_env.py
+@@ -38,6 +38,9 @@ def update_obs(observation):
+         observation["observation"].get("right_camera", {}).get("rgb", None)
+     )
+-    state = observation["joint_action"]["vector"]
++    robot_state = observation["observation"].get("robot_state", {})
++    state = robot_state.get(
++        "vector", observation["joint_action"]["vector"]
++    )
+ 
+     return {
+         "full_image": full_image,

@@ -1,0 +1,52 @@
+diff --git a/rlinf/workers/env/env_worker.py b/rlinf/workers/env/env_worker.py
+--- a/rlinf/workers/env/env_worker.py
++++ b/rlinf/workers/env/env_worker.py
+@@ -14,6 +14,7 @@
+ 
+ import asyncio
+ import gc
++import os
+ from collections import defaultdict
+ from typing import Any
+ 
+@@ -144,7 +145,19 @@ class EnvWorker(Worker):
+         else:
+             self.enable_online_lerobot = False
+         if self.enable_eval:
++            self.eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= self.eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{self.eval_execution_horizon}"
++                )
+             self.eval_num_envs_per_stage = (
+                 self.cfg.env.eval.total_num_envs // self._world_size // self.stage_num
+             )
+             self.eval_batch_size = self.cfg.env.eval.total_num_envs // self.stage_num
+@@ -165,8 +178,9 @@ class EnvWorker(Worker):
+         self.n_eval_chunk_steps = 0
+         if self.enable_eval:
+             self.n_eval_chunk_steps = (
+-                self.cfg.env.eval.max_steps_per_rollout_epoch
+-                // self.model_cfg.num_action_chunks
+-            )
++                self.cfg.env.eval.max_steps_per_rollout_epoch
++                + self.eval_execution_horizon
++                - 1
++            ) // self.eval_execution_horizon
+         self.actor_split_num = (
+             1 if not self.enable_train else self.get_actor_split_num()
+@@ -570,6 +584,7 @@ class EnvWorker(Worker):
+             wm_env_type=self.cfg.env.eval.get("wm_env_type", None),
+             env_cfg=self.cfg.env.eval,
+         )
++        chunk_actions = chunk_actions[:, : self.eval_execution_horizon]
+         env_info = {}
+ 
+         obs_list, _, chunk_terminations, chunk_truncations, infos_list = (

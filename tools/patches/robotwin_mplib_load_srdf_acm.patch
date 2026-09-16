@@ -1,0 +1,27 @@
+diff --git a/envs/robot/planner.py b/envs/robot/planner.py
+--- a/envs/robot/planner.py
++++ b/envs/robot/planner.py
+@@ -7,6 +7,7 @@ import numpy as np
+ import toppra as ta
+ from mplib.sapien_utils import SapienPlanner, SapienPlanningWorld
+ import transforms3d as t3d
++import xml.etree.ElementTree as ET
+ import envs._GLOBAL_CONFIGS as CONFIGS
+ 
+ 
+@@ -190,6 +191,15 @@ class MplibWrapperPlanner(MplibPlanner):
+         scene=None,
+     ):
+         super().__init__(urdf_path, srdf_path, move_group, robot_origion_pose, robot_entity, planner_type, scene)
++        # SapienPlanningWorld does not consume the SRDF passed to RoboTwin.
++        # Apply its disabled link pairs to the world's allowed-collision matrix
++        # so scene-backed planning has the same self-collision semantics as
++        # standalone mplib.Planner.
++        if scene is not None and srdf_path is not None:
++            for pair in ET.parse(srdf_path).getroot().findall("disable_collisions"):
++                self.planner.acm.set_entry(
++                    pair.attrib["link1"], pair.attrib["link2"], True
++                )
+         ta.setup_logging("CRITICAL")  # hide logging
+ 
+         self.active_joints_name = active_joints_name
