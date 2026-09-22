@@ -3,14 +3,17 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-source_embodiment="${robotwin_root}/assets/embodiments/panthera"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+overlay_root="${workspace}/overlays/robotwin"
+sim_package="${workspace}/packages/panthera_sim"
+source_embodiment="${overlay_root}/assets/embodiments/panthera"
 generated_embodiment="${overlay_root}/assets/embodiments/panthera_phone"
-target_embodiment="${robotwin_root}/assets/embodiments/panthera_phone"
-state_root="${workspace}/.panthera-phone-scene-state"
-upstream_state="${workspace}/.panthera-single-sft-pipeline-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+state_root="${workspace}/state/panthera-phone-scene-state"
+upstream_state="${workspace}/state/panthera-single-sft-pipeline-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 camera_profile="phone_srt_provisional_wide_v3"
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -25,7 +28,7 @@ for command_name in flock python3; do
 done
 for required in \
   "$activation_script" \
-  "${overlay_root}/build_panthera_phone_embodiment.py" \
+  "${sim_package}/build_panthera_phone_embodiment.py" \
   "${overlay_root}/envs/place_vertical_cylinder_in_groove.py" \
   "${overlay_root}/task_config/panthera_phone_vertical_oracle.yml" \
   "${overlay_root}/description/task_instruction/place_vertical_cylinder_in_groove.json" \
@@ -36,8 +39,8 @@ for required in \
   fi
 done
 for marker in \
-  "${workspace}/.bootstrap-state/verified.ok" \
-  "${workspace}/.panthera-embodiment-state/verified.ok"; do
+  "${workspace}/state/bootstrap-state/verified.ok" \
+  "${workspace}/state/panthera-embodiment-state/verified.ok"; do
   if [[ ! -f "$marker" ]]; then
     echo "错误：缺少前置验收标记：${marker}" >&2
     exit 1
@@ -92,22 +95,14 @@ PY
     exit 1
   fi
 else
-  python "${overlay_root}/build_panthera_phone_embodiment.py" \
+  python "${sim_package}/build_panthera_phone_embodiment.py" \
     --source-root "$source_embodiment" \
     --output-root "$generated_embodiment"
 fi
-mkdir -p "$target_embodiment"
-cp -a "${generated_embodiment}/." "$target_embodiment/"
-
-install -m 0644 \
-  "${overlay_root}/envs/place_vertical_cylinder_in_groove.py" \
-  "${robotwin_root}/envs/place_vertical_cylinder_in_groove.py"
-install -m 0644 \
-  "${overlay_root}/description/task_instruction/place_vertical_cylinder_in_groove.json" \
-  "${robotwin_root}/description/task_instruction/place_vertical_cylinder_in_groove.json"
-install -m 0644 \
-  "${overlay_root}/task_config/panthera_phone_vertical_oracle.yml" \
-  "${robotwin_root}/task_config/panthera_phone_vertical_oracle.yml"
+# Reassemble after generation so the runtime is entirely derived from the
+# pinned upstream plus the overlay, without hand-installed static files.
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
 
 python - "$robotwin_root" "${state_root}/scene-summary.json" <<'PY'
 import json
@@ -117,7 +112,7 @@ import yaml
 
 root = Path(sys.argv[1])
 summary_path = Path(sys.argv[2])
-registry_path = root / "task_config/_embodiment_config.yml"
+registry_path = root / "env_cfg/task_config/_embodiment_config.yml"
 registry = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
 expected = {"file_path": "./assets/embodiments/panthera_phone"}
 if registry.get("panthera_phone") != expected:
@@ -126,7 +121,7 @@ if registry.get("panthera_phone") != expected:
         yaml.safe_dump(registry, sort_keys=False), encoding="utf-8"
     )
 
-camera_path = root / "task_config/_camera_config.yml"
+camera_path = root / "env_cfg/task_config/_camera_config.yml"
 cameras = yaml.safe_load(camera_path.read_text(encoding="utf-8"))
 phone_camera = {"fovy": 75, "w": 320, "h": 240}
 if cameras.get("PhoneSRT_Center4_3_Wide") != phone_camera:

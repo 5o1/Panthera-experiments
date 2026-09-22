@@ -7,7 +7,7 @@
 
 第一次 16 条未见轨迹的 0/16 不能用于评价模型，因为 RLinf 官方评测路径只加载了
 proprio projector，遗漏了训练输出目录中独立保存的连续 L1 action head，实际执行的是
-离散 token fallback。项目补丁 `tools/patches/rlinf_openvla_oft_l1_eval.patch` 已修正加载与
+离散 token fallback。项目补丁 `overlays/rlinf/patches/rlinf_openvla_oft_l1_eval.patch` 已修正加载与
 批量推理，离线 episode 0 五点探针得到平均绝对误差 0.04275、最大绝对误差 0.17059。
 
 修正后合并运行训练 seed 0 和未见 seed 200001，结果仍为 0/2。每条轨迹完整执行 160 个
@@ -32,7 +32,7 @@ RoboTwin TOPP 执行或 L1 action head 文件损坏。
 - 输出模型：`/data/lyy/panthera-vla/runs/panthera-phone-openvla-sft/panthera-phone-wide-v3-vertical-sft-20000steps`
 - 状态目录：`/data/lyy/panthera-vla/.panthera-phone-openvla-sft-20k-state/`
 - 启动入口：`/data/lyy/panthera-vla/start_lab_openvla_phone_sft_continue_20k.sh`
-- 计算资源：仅物理 GPU1–3；GPU0 禁止本实验使用。
+- 计算资源：该次运行使用物理 GPU1–3。
 - 最佳验证 L1：`0.0407615`（step 19000）
 - 最终验证 L1：`0.0480221`（step 20000）
 
@@ -54,7 +54,7 @@ RLinf 会发现全机四卡，然后把外层 `CUDA_VISIBLE_DEVICES=1,2` 内的 
 再次写进 worker 环境，导致错误占用物理 GPU0/1。错误启动在模型进入有效轨迹前终止并归档，
 GPU0 已回到 16 MiB 基线。
 
-`tools/patches/rlinf_cuda_visible_subset.patch` 将计算 worker 的 local rank 通过父进程掩码
+`overlays/rlinf/patches/rlinf_cuda_visible_subset.patch` 将计算 worker 的 local rank 通过父进程掩码
 翻译回物理编号，同时保留无 GPU 管理 worker 的全机声明。单元验证为 `0→1`、`1→2`，
 运行时 `nvidia-smi` 也确认两个模型 PID 只位于物理 GPU1/2。
 
@@ -64,7 +64,7 @@ GPU0 已回到 16 MiB 基线。
 warmup 分支在 `gradient_step_idx >= lr_warmup_steps` 后仍然每步把 optimizer 学习率直接写回
 原值；`MultiStepLR` 在第 4000 个续训 update 做出的 10 倍衰减因此会在下一步被覆盖。20k
 运行加载的是旧代码，故完整运行仍保持 `5e-4`；其离线 loss 不被当成闭环成功。
-`tools/patches/openvla_oft_warmup_decay.patch` 已应用到后续训练入口：warmup 完成后停止覆盖
+`overlays/openvla/patches/openvla_oft_warmup_decay.patch` 已应用到后续训练入口：warmup 完成后停止覆盖
 optimizer 学习率，使调度器衰减能够保持。
 
 第一次 25x7 训练启动时又发现了补丁状态检测缺陷：GNU `patch --reverse --batch --dry-run`
@@ -82,7 +82,7 @@ optimizer 学习率，使调度器衰减能够保持。
 索引 42，未来第 1 和第 5 个目标仍不动，而未来第 25 个目标已经包含明确的手臂位移。
 
 因此不降低 50 Hz 控制频率，而把一次预测窗口从 5 帧（0.1 秒）扩为 25 帧（0.5 秒）。
-`tools/patches/openvla_oft_panthera_constants.patch` 增加独立的 `PANTHERA` 平台常量：动作块
+`overlays/openvla/patches/openvla_oft_panthera_constants.patch` 增加独立的 `PANTHERA` 平台常量：动作块
 25、动作 7 维、本体状态 7 维、Q99 归一化。现有 TFDS 无需重建；真实数据管线已读出
 `(25,7)` action、`(1,7)` proprio 和 `(1,224,224,3)` RGB，一步优化器 smoke 已通过。
 
@@ -190,3 +190,58 @@ final seed 300001–300016 从未启动。
 `20k-lr1e5-release-gate-dev16-2of16-20260915-181400/`；53 项清单已通过 SHA-256 校验，
 运行后无 Ray、训练、评测或 GPU 计算进程残留。2026-09-15 用户要求本组结束后暂停，
 因此不得自动启动新的训练、调参或评测，等待人工改良。
+
+## 9. 离线指标为何不能作为选模判据（2026-09-17 实测）
+
+第 8 节记录了"离线 L1 下降没有转化为闭环能力"。2026-09-17 对该现象做了定向测量，
+结论推翻了当时的一个隐含假设。
+
+**假设与检验。** 初始假设是：动作为 7 维绝对关节位置、proprio 同为 7 维关节状态输入，
+相邻 50 Hz 目标几乎不动（相邻专家动作范数中位数 `0.00310 rad`、30.1% 不超过 `1e-4`），
+因此"把 proprio 原样复制"就能拿到接近最优的 L1，模型可能退化成不看图像的捷径。为检验
+该假设，构造了三组尺度无关、对方向敏感的判据，在同一 16 条验证集（episode 112–127，
+每集 8 个采样点，共 128 个 chunk）上比较 25x7 的 15k 与 20k checkpoint：
+
+- `skill_score = 1 - model_l1 / copy_l1`，其中 `copy_l1` 是"永远复制 proprio"的基线；
+- 预测位移幅度比 `|pred - proprio| / |target - proprio|`；
+- 预测位移与真实位移的方向余弦。
+
+**结果（手臂 6 维，原始弧度）：**
+
+| 判据 | 15k（dev16 11/16） | 20k（dev16 2/16） |
+| --- | --- | --- |
+| model_l1 | 0.00954 | 0.00579 |
+| skill_score | 0.554 | **0.729** |
+| 位移幅度比 | 1.131 | **1.036** |
+| 方向余弦 | 0.381 | **0.652** |
+| pos 1 skill / 余弦 | −1.817 / 0.066 | −0.539 / 0.359 |
+| pos 5 skill / 余弦 | −0.003 / 0.266 | 0.488 / 0.621 |
+| pos 25 skill / 余弦 | 0.737 / 0.458 | 0.826 / 0.692 |
+
+**假设被证伪。** 20k 在全部判据上更好，包括专门用于识别捷径的那几项：它预测的位移幅度
+几乎正确，方向余弦从 0.381 提升到 0.652。它不是退化成了照抄，而是确实更会预测运动。
+两次 dev16 使用同一组 16 个 seed 与同一套延迟释放接管协议，11/16 对 2/16 的 Fisher
+精确检验双侧 `p = 0.0032`，不是采样噪声。
+
+**修正后的结论。** 问题不在于度量了什么量，而在于**在哪个状态分布上度量**。两个模型的
+离线评估都跑在专家状态上；闭环时策略访问的是自身造成的、已漂离专家流形的状态。在专家
+流形上拟合更锐的模型可以在流形外更脆。因此任何在专家状态上计算的离线指标都不能预测
+闭环性能，**不得作为选模或早停判据**；唯一有效的停止信号是闭环 rollout。据此，
+docs/17 第 5 节的验证集 L1 早停不应启用。该配置另有一处独立缺陷：`min_delta` 是加在
+约 `2.5e-2` 的 loss 上的**绝对**阈值，等价于"每 1000 步相对改善低于 4% 即开始耗耐心"，
+用 15k→20k 的实际序列回放会在 20000–21000 步停下。
+
+**另一项独立发现。** 两个模型在 chunk 第 1 帧上 `skill_score` 均为负（−1.82 / −0.54），
+即对最近一帧动作都不如照抄 proprio，且过量预测位移（3.17× / 1.87×）；只有块内靠后的
+位置才有可用信号。这与第 5 节执行视野扫描"越长越好、`20/25` 最接近成功"的经验结果是
+同一现象的两个侧面，并提示可以在不重训的前提下试验跳过执行前缀。
+
+**尚未排除的替代解释。** 若模型距收敛仍远（方向余弦 0.652 对应平均约 49° 方向误差，
+确实不是收敛状态），则 15k→20k 的闭环倒退也可能只是远离收敛时的非单调波动。现有数据
+无法排除该解释。两种解释指向同一操作结论：训练固定长预算、定期存档、用闭环 probe 选模，
+而不是用 loss 早停。
+
+审计脚本为 `packages/panthera_vla/audit_copycat_baseline.py`（推理-only，单卡，
+不写模型）。产物在 Lab
+`reports/panthera-phone-vertical-sft-v3/copycat-audit/{15k,20k}.json`，含逐 episode 明细。
+注意本节的 dev16 数字引自第 8 节记录，本次未重跑闭环评测。

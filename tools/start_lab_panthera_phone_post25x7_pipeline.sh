@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-phone-post25x7-pipeline-state"
+state_root="${workspace}/state/panthera-phone-post25x7-pipeline-state"
 launcher_log="${state_root}/launcher.log"
 
 mkdir -p "$state_root"
@@ -19,7 +19,7 @@ if [[ -f "${state_root}/pipeline.ok" ]]; then
   exit 0
 fi
 
-nohup bash "${workspace}/run_lab_panthera_phone_post25x7_pipeline.sh" \
+nohup bash "${workspace}/bin/run_lab_panthera_phone_post25x7_pipeline.sh" \
   >"$launcher_log" 2>&1 </dev/null &
 launcher_pid=$!
 printf '%s\n' "$launcher_pid" >"${state_root}/launcher-pid.txt"

@@ -5,9 +5,9 @@ set -euo pipefail
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 dataset_name=panthera_phone_cylinder_socket_v2_single_grasp_sft_v1
 dataset_root="${workspace}/data/place_randomized_cylinder_in_socket/${dataset_name}"
-dataset_state="${workspace}/.panthera-v2-single-grasp-formal-state"
-state_root="${workspace}/.panthera-v2-schema10-media-audit-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+dataset_state="${workspace}/state/panthera-v2-single-grasp-formal-state"
+state_root="${workspace}/state/panthera-v2-schema10-media-audit-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 auditor="${workspace}/verify_lab_panthera_single_dataset.py"
 summary="${state_root}/media-summary.json"
 scene_profile=panthera_phone_symmetric_single_grasp_direct_release_cylinder_socket_v2

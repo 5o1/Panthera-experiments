@@ -3,12 +3,18 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.panthera-phone-oracle-state"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+overlay_root="${workspace}/overlays/robotwin"
+oracle_runner="${workspace}/packages/panthera_sim/diagnostics/run_oracle_smoke.py"
+state_root="${workspace}/state/panthera-phone-oracle-state"
 result_root="${workspace}/results/panthera-phone-vertical-oracle"
-activation_script="${workspace}/activate_lab_vla.sh"
-scene_runner="${workspace}/bootstrap_lab_panthera_phone_scene.sh"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
+scene_runner="${workspace}/bin/bootstrap_lab_panthera_phone_scene.sh"
 oracle_gpu="${PANTHERA_PHONE_ORACLE_GPU:-2}"
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -22,8 +28,7 @@ for command_name in flock timeout nvidia-smi; do
   }
 done
 for required in \
-  "$activation_script" "$scene_runner" \
-  "${overlay_root}/run_oracle_smoke.py"; do
+  "$activation_script" "$scene_runner" "$oracle_runner"; do
   if [[ ! -s "$required" ]]; then
     echo "错误：缺少 phone-SRT oracle 文件：${required}" >&2
     exit 1
@@ -53,7 +58,7 @@ printf '%s\n' "$run_log" >"${state_root}/run-log.txt"
 set +e
 CUDA_VISIBLE_DEVICES="$oracle_gpu" PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=60s \
   "${PANTHERA_PHONE_ORACLE_TIMEOUT:-45m}" \
-  python "${overlay_root}/run_oracle_smoke.py" \
+  python "$oracle_runner" \
     --robotwin-root "$robotwin_root" \
     --output-root "$result_root" \
     --task-name place_vertical_cylinder_in_groove \

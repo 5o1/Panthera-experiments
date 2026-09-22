@@ -3,12 +3,17 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.cylinder-oracle-state"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+overlay_root="${workspace}/overlays/robotwin"
+oracle_runner="${workspace}/packages/panthera_sim/diagnostics/run_oracle_smoke.py"
+state_root="${workspace}/state/cylinder-oracle-state"
 result_root="${workspace}/results/cylinder-oracle-smoke"
-activation_script="${workspace}/activate_lab_vla.sh"
-expected_robotwin_commit="0008ae6800df9f75fc8de7098bacb01735fd8fd2"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2
@@ -20,16 +25,12 @@ for command_name in flock git timeout; do
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.bootstrap-state/verified.ok" ]]; then
+if [[ ! -f "${workspace}/state/bootstrap-state/verified.ok" ]]; then
   echo "错误：RLinf/RoboTwin Conda 环境尚未通过验收。" >&2
   exit 1
 fi
 if [[ ! -f "$activation_script" ]]; then
   echo "错误：缺少环境激活脚本：${activation_script}" >&2
-  exit 1
-fi
-if [[ $(git -C "$robotwin_root" rev-parse HEAD) != "$expected_robotwin_commit" ]]; then
-  echo "错误：RoboTwin checkout 不是已固定提交。" >&2
   exit 1
 fi
 
@@ -43,23 +44,12 @@ fi
 for relative_path in \
   envs/place_cylinder_in_groove.py \
   description/task_instruction/place_cylinder_in_groove.json \
-  task_config/panthera_cylinder_oracle.yml \
-  run_oracle_smoke.py; do
+  task_config/panthera_cylinder_oracle.yml; do
   if [[ ! -s "${overlay_root}/${relative_path}" ]]; then
     echo "错误：overlay 文件缺失或为空：${relative_path}" >&2
     exit 1
   fi
 done
-
-install -m 0644 \
-  "${overlay_root}/envs/place_cylinder_in_groove.py" \
-  "${robotwin_root}/envs/place_cylinder_in_groove.py"
-install -m 0644 \
-  "${overlay_root}/description/task_instruction/place_cylinder_in_groove.json" \
-  "${robotwin_root}/description/task_instruction/place_cylinder_in_groove.json"
-install -m 0644 \
-  "${overlay_root}/task_config/panthera_cylinder_oracle.yml" \
-  "${robotwin_root}/task_config/panthera_cylinder_oracle.yml"
 
 # shellcheck disable=SC1090
 source "$activation_script"
@@ -75,7 +65,7 @@ printf '%s\n' "$run_log" >"${state_root}/run-log.txt"
 set +e
 timeout --signal=INT --kill-after=60s \
   "${PANTHERA_ORACLE_TIMEOUT:-30m}" \
-  python "${overlay_root}/run_oracle_smoke.py" \
+  python "$oracle_runner" \
     --robotwin-root "$robotwin_root" \
     --output-root "$result_root" \
     --seeds 0 1 2 3 2>&1 | tee "$run_log"

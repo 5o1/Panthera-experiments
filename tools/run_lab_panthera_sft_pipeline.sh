@@ -3,11 +3,11 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-single-sft-pipeline-state"
-dataset_state="${workspace}/.panthera-single-sft-dataset-state"
-dataset_runner="${workspace}/run_lab_robotwin_panthera_sft_dataset.sh"
-rlds_runner="${workspace}/run_lab_panthera_sft_rlds.sh"
-train_runner="${workspace}/run_lab_openvla_sft_step_smoke.sh"
+state_root="${workspace}/state/panthera-single-sft-pipeline-state"
+dataset_state="${workspace}/state/panthera-single-sft-dataset-state"
+dataset_runner="${workspace}/bin/run_lab_robotwin_panthera_sft_dataset.sh"
+rlds_runner="${workspace}/bin/run_lab_panthera_sft_rlds.sh"
+train_runner="${workspace}/bin/run_lab_openvla_sft_step_smoke.sh"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2

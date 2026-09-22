@@ -1,0 +1,24 @@
+L515:
+  fovy: 45
+  w: 320
+  h: 180
+Large_L515:
+  fovy: 45
+  w: 640
+  h: 360
+D435:
+  fovy: 37
+  w: 320
+  h: 240
+Large_D435:
+  fovy: 37
+  w: 640
+  h: 480
+PhoneSRT_4_3:
+  fovy: 55
+  w: 320
+  h: 240
+PhoneSRT_Center4_3_Wide:
+  fovy: 75
+  w: 320
+  h: 240

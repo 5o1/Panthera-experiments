@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-v2-schema10-unattended-state"
+state_root="${workspace}/state/panthera-v2-schema10-unattended-state"
 pid=""
 [[ -s "${state_root}/launcher.pid" ]] && pid=$(<"${state_root}/launcher.pid")
 if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then

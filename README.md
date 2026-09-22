@@ -169,6 +169,14 @@ MoveIt Servo 作为依赖；若以后需要其碰撞能力，可以重新以同�
 - [schema 10 仿真数据集生成过程报告（HTML）](docs/panthera_v2_dataset_generation_report_zh.html)
 - [schema 10 仿真数据集生成过程报告（PDF）](docs/panthera_v2_dataset_generation_report_zh.pdf)
 - [随机圆柱入槽 v2 无人值守训练流水线](docs/16_panthera_v2_unattended_training_pipeline_2026-09-16.md)
+- [随机圆柱入槽 v2 扩充数据集与异步落盘流水线](docs/17_panthera_v2_expanded_dataset_pipeline_2026-09-17.md)
+- [闭环评测台缺陷排查](docs/18_eval_harness_defects_2026-09-19.md)
+- [配置与目录架构](docs/19_architecture_plan_2026-09-19.md)
+- [评测相机与训练观测错配](docs/20_eval_observation_mismatch_2026-09-19.md)
+- [RoboTwin 上游迁移到 6dde571](docs/21_upstream_migration_2026-09-20.md)
+- [单轨迹过拟合门禁收口](docs/22_single_trajectory_overfit_gate_hardening_2026-09-20.md)
+- [OpenPI π0.5 迁移与同口径基线](docs/23_openpi_pi05_migration_baseline_2026-09-21.md)
+- [OpenVLA 28 维动力学 proprio 过拟合实验](docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md)
 - [单目视觉实验计划](<docs/Panthera-HT 单目视觉手臂与手势遥操作实验计划.md>)
 - [依赖列表](<docs/Panthera-HT 单目视觉遥操作依赖列表.md>)
 
@@ -254,12 +262,34 @@ WSL 仓库中的同一入口为 `tools/run_lab_robotwin_panthera_v2_pilot.sh`。
 `@reboot` 入口会从阶段标记恢复；不会在训练中途调参或自动枚举实验。详见
 [无人值守训练流水线](docs/16_panthera_v2_unattended_training_pipeline_2026-09-16.md)。
 
+正式扩充集 1280 条已生成两版：随机机位版（2026-09-17，已人工批准）和固定机位版
+`..._sft_v2_fixedcam`（2026-09-17 19:57 完成，机器审计通过，用户已审阅 10 分钟视频）。
+两版都使用有界异步整集编码/原子提交，并用几何投影和 SAPIEN actor segmentation 双门禁
+保证机械臂、圆柱和槽的全部可见像素位于中央 80% 区域；固定机位版复用同一套门禁但不再
+逐集重采机位。**2026-09-17 决定弃用 v3 `panthera_phone_vertical_sft_v1`，正式训练只采用
+固定机位 1280**；随机机位版保留为证据。两次大规模生成都因少数轨迹的重定时峰值加速度
+越过 `2.002 rad/s²` 门禁而需要定点重采，根因是规划器 scale 空间容差与审计值空间门禁
+不一致，尚未修复。
+
+合并审计另补了一项实际 `qpos` 速度连续性判据：原判据的速度/加速度上界只加在重定时
+**规划**轨迹上，实际 `qpos` 只查停顿，测不到速度跳变（schema 9 即由此漏过）。新判据以
+`a_limit * dt` 为预算度量逐关节速度跳变，门禁比 `1.5`；固定机位全量 1280 最差 1.0673，
+已否决的 schema 9 为 17.4060。设计、对比数据和 Lab 路径见
+[v2 扩充数据集与异步落盘流水线](docs/17_panthera_v2_expanded_dataset_pipeline_2026-09-17.md)。
+
+后续 SFT 曾改为验证集 L1 早停（最小有效下降 `1e-3`、耐心 3）。2026-09-17 的实测推翻了
+该判据的前提：25x7 的 20k checkpoint 在全部离线指标上都优于 15k，其 release-gate dev16
+却是 2/16 对 11/16（Fisher 精确检验 p = 0.0032）。离线指标在专家状态分布上度量，无法
+预测闭环，**不得作为选模或停止判据**；该早停配置本身也因 `min_delta` 是绝对阈值而会在
+远未收敛处停下。详见
+[OpenVLA 闭环失败分析](docs/10_openvla_closed_loop_failure_analysis.md)。
+
 ```bash
 # 在 Lab 上运行；重复执行会跳过已验证阶段
 bash /data/lyy/panthera-vla/bootstrap_lab_vla.sh
 
 # 进入已完成的 RLinf + RoboTwin 环境
-source /data/lyy/panthera-vla/activate_lab_vla.sh
+source /data/lyy/panthera-vla/tools/activate_lab_vla.sh
 
 # 固定模型提交，续传下载并运行 4 卡、4 环境的官方基线 smoke
 bash /data/lyy/panthera-vla/run_lab_robotwin_baseline.sh
@@ -327,13 +357,13 @@ bash /data/lyy/panthera-vla/start_lab_panthera_phone_target_assist_gate_pipeline
 bash /data/lyy/panthera-vla/start_lab_panthera_phone_25x7_low_lr_20k_pipeline.sh
 ```
 
-各正式脚本接受显式 GPU 列表。当前 GPU0 不属于本实验，训练固定使用
-`PANTHERA_SFT_GPUS=1,2,3`，评测使用 `PANTHERA_EVAL_GPUS=1,2`；评测运行器包含 RLinf
+各正式脚本接受显式 GPU 列表。本实验可使用全部四张卡，训练默认
+`PANTHERA_SFT_GPUS=0,1,2,3`；评测运行器包含 RLinf
 局部 GPU rank 到启动器物理 GPU 掩码的修补，避免逻辑 `0,1` 错占物理 GPU0。正式评测按
 两个环境各运行八轮，仍产生固定的 16 条轨迹，不减少评测样本。
 
 构建脚本固定 RLinf/RoboTwin 提交、把缓存和临时文件限制在 `/data/lyy/`，并在
-`/data/lyy/panthera-vla/.bootstrap-state/` 记录阶段结果；当前 `environment.ok`、
+`/data/lyy/panthera-vla/state/bootstrap-state/` 记录阶段结果；当前 `environment.ok`、
 `assets.ok` 和 `verified.ok` 均已通过。基线脚本在 `.robotwin-baseline-state/` 记录模型
 revision、最终组合配置、日志、退出码、指标和视频目录。2026-09-12 的四环境/200 步
 `place_empty_cup` smoke 得到 `success_once=0.75`（3/4），四条非空视频齐全，日志无致命

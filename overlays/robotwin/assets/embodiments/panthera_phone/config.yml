@@ -1,0 +1,104 @@
+urdf_path: ./panthera.urdf
+srdf_path: ./panthera.srdf
+joint_stiffness: 1000
+joint_damping: 200
+gripper_stiffness: 1000
+gripper_damping: 200
+move_group:
+- link6
+- link6
+ee_joints:
+- joint6
+- joint6
+ee_pose_from_child_link: true
+arm_joints_name:
+- - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+- - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+gripper_name:
+- base: L_finger_joint
+  mimic:
+  - - R_finger_joint
+    - -1.0
+    - 0.0
+- base: L_finger_joint
+  mimic:
+  - - R_finger_joint
+    - -1.0
+    - 0.0
+gripper_bias: 0.165
+gripper_scale:
+- 0.0
+- 0.04
+homestate:
+- - 0.0
+  - 1.6
+  - 1.6
+  - 0.0
+  - 0.0
+  - 0.0
+- - 0.0
+  - 1.6
+  - 1.6
+  - 0.0
+  - 0.0
+  - 0.0
+delta_matrix:
+- - 1
+  - 0
+  - 0
+- - 0
+  - 1
+  - 0
+- - 0
+  - 0
+  - 1
+global_trans_matrix:
+- - 1
+  - 0
+  - 0
+- - 0
+  - 1
+  - 0
+- - 0
+  - 0
+  - 1
+robot_pose:
+- - 0
+  - -0.35
+  - 0.75
+  - 0.70710678
+  - 0
+  - 0
+  - 0.70710678
+planner: mplib_RRT
+dual_arm: false
+rotate_lim:
+- 0.2
+- 1.0
+grasp_perfect_direction:
+- front_right
+- front_left
+static_camera_list:
+- name: head_camera
+  position:
+  - -0.25
+  - 0.72
+  - 1.05
+  forward:
+  - 0.0
+  - -1.0
+  - -0.28
+  left:
+  - 1.0
+  - 0.0
+  - 0.0

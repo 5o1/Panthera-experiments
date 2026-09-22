@@ -1,0 +1,41 @@
+{
+  "derived_from": "/data/lyy/panthera-vla/RoboTwin/assets/embodiments/panthera",
+  "profile": "phone_srt_provisional_wide_v3",
+  "policy_crop": {
+    "source_aspect": "16:9",
+    "crop": "center_4_3_then_downscale",
+    "simulation_resolution": [
+      320,
+      240
+    ],
+    "vertical_fov_deg": 75
+  },
+  "static_camera": {
+    "name": "head_camera",
+    "position": [
+      -0.25,
+      0.72,
+      1.05
+    ],
+    "forward": [
+      0.0,
+      -1.0,
+      -0.28
+    ],
+    "left": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  "simulation_robot_pose": [
+    0,
+    -0.35,
+    0.75,
+    0.70710678,
+    0,
+    0,
+    0.70710678
+  ],
+  "calibration_status": "inferred_from_archived_view_not_metric"
+}

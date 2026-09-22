@@ -3,9 +3,9 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${workspace}/RLinf"
+rlinf_root="${workspace}/runtime/rlinf"
 model_root="${workspace}/models/openvla-oft-place-empty-cup"
-state_root="${workspace}/.robotwin-baseline-state"
+state_root="${workspace}/state/robotwin-baseline-state"
 log_root="${workspace}/logs/robotwin-baseline"
 script_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 activation_script="${script_root}/activate_lab_vla.sh"
@@ -18,7 +18,7 @@ if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2
   exit 1
 fi
-if [[ ! -f "${workspace}/.bootstrap-state/verified.ok" ]]; then
+if [[ ! -f "${workspace}/state/bootstrap-state/verified.ok" ]]; then
   echo "错误：RLinf/RoboTwin 基础环境尚未通过验收。" >&2
   exit 1
 fi
@@ -80,7 +80,7 @@ common_overrides=(
   "env.eval.max_episode_steps=200"
   "env.eval.max_steps_per_rollout_epoch=200"
   "rollout.model.model_path=${model_root}"
-  "env.eval.assets_path=${workspace}/RoboTwin"
+  "env.eval.assets_path=${workspace}/runtime/robotwin"
 )
 
 echo "[2/4] 组合并验证 4 卡 smoke 配置（不启动仿真）"
@@ -96,7 +96,7 @@ grep -q '^    env: 0-3$' "$resolved_config"
 grep -q '^    rollout: 0-3$' "$resolved_config"
 grep -q '^    total_num_envs: 4$' "$resolved_config"
 grep -q "^    model_path: ${model_root}$" "$resolved_config"
-grep -q "^    assets_path: ${workspace}/RoboTwin$" "$resolved_config"
+grep -q "^    assets_path: ${workspace}/runtime/robotwin$" "$resolved_config"
 touch "${state_root}/config.ok"
 
 echo "[3/4] 检查 GPU 与 Ray 运行边界"

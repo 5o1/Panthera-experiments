@@ -3,14 +3,16 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.panthera-phone-sft-dataset-state"
-shard_root="${workspace}/data_phone_shards/place_vertical_cylinder_in_groove"
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+overlay_root="${workspace}/overlays/robotwin"
+oracle_runner="${workspace}/packages/panthera_sim/diagnostics/run_oracle_smoke.py"
+replay_script="${workspace}/archive/superseded/replay_panthera_dataset.py"
+state_root="${workspace}/state/panthera-phone-sft-dataset-state"
+shard_root="${workspace}/datasets/shards/data_phone_shards/place_vertical_cylinder_in_groove"
 dataset_root="${workspace}/data/place_vertical_cylinder_in_groove/panthera_phone_vertical_sft_v1"
-activation_script="${workspace}/activate_lab_vla.sh"
-oracle_runner="${workspace}/run_lab_panthera_phone_oracle.sh"
-collector_patch="${overlay_root}/patches/robotwin_collect_seed_start.patch"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
+oracle_runner="${workspace}/bin/run_lab_panthera_phone_oracle.sh"
 template="${overlay_root}/task_config/panthera_phone_vertical_sft_v1.yml"
 task_name="place_vertical_cylinder_in_groove"
 task_config="panthera_phone_vertical_sft_v1"
@@ -43,8 +45,8 @@ for required in \
   "$activation_script" "$oracle_runner" "$collector_patch" "$template" \
   "${overlay_root}/envs/${task_name}.py" \
   "${overlay_root}/description/task_instruction/${task_name}.json" \
-  "${overlay_root}/run_oracle_smoke.py" \
-  "${overlay_root}/replay_panthera_dataset.py"; do
+  "$oracle_runner" \
+  "$replay_script"; do
   if [[ ! -s "$required" ]]; then
     echo "错误：缺少 phone-SRT 数据集文件：${required}" >&2
     exit 1
@@ -66,15 +68,13 @@ bash "$oracle_runner"
 # shellcheck disable=SC1090
 source "$activation_script"
 
-if git -C "$robotwin_root" apply --reverse --check "$collector_patch" 2>/dev/null; then
-  echo "RoboTwin 分片 seed 起点补丁已存在。"
-elif git -C "$robotwin_root" apply --check "$collector_patch"; then
-  git -C "$robotwin_root" apply "$collector_patch"
-  echo "已应用 RoboTwin 分片 seed 起点补丁。"
-else
-  echo "错误：RoboTwin 分片 seed 起点补丁无法安全应用。" >&2
-  exit 1
-fi
+# Assembled from the pinned upstream instead of patched into it.
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin \
+  --source "$upstream_root" \
+  --runtime "$robotwin_root"
+grep -q 'seed_start = int(' "$robotwin_root/script/collect_data.py" \
+  || { echo "错误：装配出的运行树缺少所需改动。" >&2; exit 1; }
 
 install -m 0644 "${overlay_root}/envs/${task_name}.py" \
   "${robotwin_root}/envs/${task_name}.py"
@@ -82,9 +82,9 @@ install -m 0644 \
   "${overlay_root}/description/task_instruction/${task_name}.json" \
   "${robotwin_root}/description/task_instruction/${task_name}.json"
 install -m 0644 "$template" \
-  "${robotwin_root}/task_config/${task_config}.yml"
+  "${robotwin_root}/env_cfg/task_config/${task_config}.yml"
 
-python - "$template" "${robotwin_root}/task_config" "$shard_count" \
+python - "$template" "${robotwin_root}/env_cfg/task_config" "$shard_count" \
   "$episodes_per_shard" <<'PY'
 from pathlib import Path
 import sys
@@ -110,7 +110,7 @@ PY
 if [[ ! -f "${state_root}/planning-preflight.ok" ]]; then
   CUDA_VISIBLE_DEVICES="${collector_gpus[0]}" PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=60s \
     "${PANTHERA_PHONE_PREFLIGHT_TIMEOUT:-45m}" \
-    python "${overlay_root}/run_oracle_smoke.py" \
+    python "$oracle_runner" \
       --robotwin-root "$robotwin_root" \
       --output-root "${state_root}/planning-preflight" \
       --task-name "$task_name" \
@@ -173,7 +173,7 @@ for ((batch_start=0; batch_start<shard_count; batch_start+=gpu_count)); do
       set +e
       PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=90s \
         "${PANTHERA_PHONE_SHARD_TIMEOUT:-2h}" \
-        python script/collect_data.py "$task_name" \
+        python scripts/collect_data.py "$task_name" \
           "panthera_phone_vertical_sft_shard${shard}" \
         >"$run_log" 2>&1
       code=$?
@@ -371,7 +371,7 @@ print(json.dumps(summary, indent=2))
 PY
 
 CUDA_VISIBLE_DEVICES="${collector_gpus[0]}" python \
-  "${overlay_root}/replay_panthera_dataset.py" \
+  "$replay_script" \
   --robotwin-root "$robotwin_root" \
   --dataset-root "$dataset_root" \
   --task-name "$task_name" \

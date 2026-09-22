@@ -3,8 +3,8 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-v2-schema10-unattended-state"
-runner="${workspace}/run_lab_panthera_v2_unattended_pipeline.sh"
+state_root="${workspace}/state/panthera-v2-schema10-unattended-state"
+runner="${workspace}/bin/run_lab_panthera_v2_unattended_pipeline.sh"
 mkdir -p "$state_root"
 [[ -x "$runner" ]] || { echo "错误：缺少可执行流水线 ${runner}。" >&2; exit 1; }
 

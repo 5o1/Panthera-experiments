@@ -1,0 +1,190 @@
+diff --git a/overlays/robotwin/envs/place_cylinder_in_groove.py b/overlays/robotwin/envs/place_cylinder_in_groove.py
+index 983b48d..6011ee0 100644
+--- a/overlays/robotwin/envs/place_cylinder_in_groove.py
++++ b/overlays/robotwin/envs/place_cylinder_in_groove.py
+@@ -152,12 +152,60 @@ class place_cylinder_in_groove(Base_Task):
+             "cylinder_mass_kg": 0.03,
+         }
+         super()._init_task_env_(**kwargs)
++        self._give_planner_the_task_objects()
++        self._planner_cylinder_attached = False
+         if not self.robot.is_dual_arm:
+             raise ValueError("single-Panthera task requires embodiment: [panthera]")
+         if self.robot.left_entity is not self.robot.right_entity:
+             raise ValueError("RoboTwin single embodiment did not alias one articulation")
+         self.single_arm_mode = True
+
++    def _give_planner_the_task_objects(self):
++        """Rebuild the motion planner now that the cylinder and socket exist.
++
++        ``_init_task_env_`` builds the planner inside ``setup_scene``, which
++        runs before ``load_actors``.  ``SapienPlanningWorld`` snapshots the
++        scene at construction, so the planning world held only the table, the
++        wall and the ground, and ``update_from_simulation`` cannot help -- it
++        refreshes the poses of objects already in the world, it does not add
++        new ones.  Every path was therefore planned across an empty table.
++
++        From the home pose the top-down grasp happens to descend vertically and
++        misses the cylinder; from any other start the planner routes straight
++        through where the cylinder actually is.  Measured on sixteen lying
++        scenes diverged by two hundred expert steps, oracle takeover succeeded
++        2/16, and the failures rolled the cylinder a median 114 degrees during
++        the approach.  Upright survived (15/16) only because a top-down grasp
++        on a standing cylinder is symmetric about the vertical axis.
++        """
++        self.robot.set_planner(self.scene)
++        self._planner_cylinder_attached = False
++        self._plan_against_the_current_world()
++
++    def _plan_against_the_current_world(self):
++        """Route every plan through :meth:`_sync_planner_world`.
++
++        Three places plan a path: ``_base_task.move`` and the two direct
++        ``left_plan_path`` calls on the continuous-motion route.  Hooking
++        ``move`` covered only the first, and the route's own calls went to a
++        stale world -- which is how a grasped cylinder still read as an
++        obstacle the fingers were inside of.  The robot's planning entry point
++        is where all of them meet, so it is the only hook that cannot be
++        bypassed by a fourth call site appearing later.
++        """
++        for side in ("left_plan_path", "right_plan_path"):
++            bound = getattr(self.robot, side, None)
++            if bound is None:
++                continue
++            original = getattr(bound, "_panthera_unsynced", bound)
++
++            def wrapper(*args, _original=original, **kwargs):
++                self._sync_planner_world()
++                return _original(*args, **kwargs)
++
++            wrapper._panthera_unsynced = original
++            setattr(self.robot, side, wrapper)
++
+     def load_actors(self):
+         """Create a horizontal dynamic cylinder and a static U-shaped target groove."""
+         rng = np.random.default_rng(self.episode_seed)
+@@ -361,6 +409,88 @@ class place_cylinder_in_groove(Base_Task):
+             np.concatenate((actions, actions), axis=1), action_type=action_type
+         )
+
++    # Commanded gripper opening below which the oracle is holding something.
++    # Physical contact count is not usable here: the planner works on convex
++    # hulls and reported zero SAPIEN contacts while the finger hull overlapped
++    # the cylinder.  This is the same threshold the dense executor uses.
++    GRASP_CLOSED_OPENING = 0.5
++
++    def _sync_planner_world(self):
++        """Refresh object poses, and attach or detach the held cylinder.
++
++        ``SapienPlanningWorld`` is a snapshot.  Poses go stale as soon as
++        anything moves, and a grasped object stays behind in the world as an
++        obstacle the gripper is permanently inside of.  Attaching it hands the
++        object to the gripper's kinematics and allows the finger contacts;
++        detaching on release puts it back as an obstacle.
++        """
++        holding = (
++            float(self.robot.get_left_gripper_val()) < self.GRASP_CLOSED_OPENING
++        )
++        for planner in self._scene_backed_planners():
++            world = planner.planning_world
++            world.update_from_simulation(update_attached_object=True)
++            name = self._planner_cylinder_name(world)
++            if name is None:
++                continue
++            if holding and not self._planner_cylinder_attached:
++                world.attach_object(
++                    name,
++                    self._planner_articulation_name(world),
++                    self._planner_gripper_link_id(planner),
++                    list(planner.user_link_names),
++                )
++                self._set_carried_contact(planner, name, True)
++            elif not holding and self._planner_cylinder_attached:
++                world.detach_object(name)
++                self._set_carried_contact(planner, name, False)
++        self._planner_cylinder_attached = holding
++
++    def _set_carried_contact(self, planner, cylinder_name, allowed):
++        """Stop collision-checking a cylinder that is already in the gripper.
++
++        What this change is worth is entirely in the approach, where the
++        planner used to route through a cylinder it did not know existed.  Once
++        the cylinder is held, re-imposing those checks only rejects routes that
++        physically work: the measured rejections were the cylinder resting on
++        the table it was lifted from, the backdrop wall, and ``base_link``,
++        ``link1`` and ``link2`` during the lying reorientation -- convex-hull
++        artefacts of an arm that carries objects close to its own body.  The
++        collection oracle's routes were designed without this check and are the
++        baseline, so honouring it here would change behaviour that works.
++        """
++        for other in planner.planning_world.get_object_names():
++            if other != cylinder_name:
++                planner.acm.set_entry(cylinder_name, other, allowed)
++
++    def _scene_backed_planners(self):
++        for side in ("left_planner", "right_planner"):
++            wrapper = getattr(self.robot, side, None)
++            planner = getattr(wrapper, "planner", None)
++            if planner is not None and hasattr(planner, "planning_world"):
++                yield planner
++
++    @staticmethod
++    def _planner_cylinder_name(world):
++        for name in world.get_object_names():
++            if name.startswith("panthera_cylinder"):
++                return name
++        return None
++
++    @staticmethod
++    def _planner_articulation_name(world):
++        names = list(world.get_articulation_names())
++        if len(names) != 1:
++            raise ValueError(f"expected one planned articulation, got {names}")
++        return names[0]
++
++    @staticmethod
++    def _planner_gripper_link_id(planner):
++        links = list(planner.user_link_names)
++        if "gripper_center" not in links:
++            raise ValueError(f"no gripper_center link among {links}")
++        return links.index("gripper_center")
++
+     def _move_arm(self, action, stage: str) -> bool:
+         """Execute one single-arm action group and retain its milestone frame."""
+         success = bool(self.move(action))
+
+# 为什么这个补丁被回退（2026-09-19 实测）
+#
+# 目的：让运动规划器知道桌上有圆柱和插槽。RoboTwin 在 setup_scene 里就构造了
+# SapienPlanningWorld（_init_task_env_ 第 93 行），而 load_actors 在第 134 行，
+# 所以规划世界只含 table/wall/ground，实测确认：
+#   ['ground_1', 'table_6', 'wall_5']
+# update_from_simulation() 只刷新已有物体的位姿，不会补加物体，而且 RoboTwin
+# 从不调用它，mplib 的 plan_pose 内部也不调用。
+#
+# 实现需要四层，少一层就全线失败：
+#   1. load_actors 之后重建规划器
+#   2. 夹住时 attach 物体（判据必须是夹爪指令开度；物理接触数不可用——规划器用
+#      凸包，实测接触数为 0 时 R_finger 仍与圆柱重叠）
+#   3. 被搬运物体豁免碰撞检查（否则"圆柱压在桌上"变成机器人撞桌子；实测还会撞
+#      base_link/link1/link2，是凸包过粗的产物）
+#   4. 钩子必须挂在 robot.left_plan_path 上，不能挂 move()——有两处
+#      left_plan_path 直接调用绕过 move()
+#
+# 结果（每格 n=16）：
+#   场景            基线      本补丁
+#   upright 初始    16/16     16/16
+#   upright 偏离    15/16     16/16
+#   lying   初始    16/16     14/16   ← 回退
+#   lying   偏离     2/16      3/16
+# 净账 +1/+1/-2，在 n=16 下是噪声。
+#
+# 决定性发现：规划不是 lying 接管的瓶颈。lying 偏离态 16 条里 8 条断在 grasped
+# （预闭合开度 0.90 时手指凸包与圆柱重叠，抓取位姿 IK 失败）。永久放开手指碰撞
+# 可把规划成功率从 6/16 提到 14/16，但最终成功率仍是 3/16——抓到了，插不进。
+# 真正的限制是偏离后的抓取/翻正几何。
+#
+# 那 2 条 lying 初始态回退没有任何规划拒绝，是障碍感知让 RRT 选了不同路径，
+# 物理结果落到失败一侧。
+#
+# 专家复现不受影响：replay 走 need_plan=False，实测规划调用 0 次。

@@ -1,0 +1,48 @@
+# Panthera arm with the phone/SRT head camera, as used by the v2 socket task.
+#
+# RoboTwin's own embodiment config.yml describes kinematics and drive gains in
+# its format, and is consumed by its loader unchanged.  This file is the layer
+# RoboTwin has no place for: the end effector's contact physics, and the
+# behaviours that belong to the end effector rather than to whatever script
+# happens to be driving it.
+schema_version: 1
+name: panthera_phone_symmetric
+
+embodiment:
+  # Kept in RoboTwin's format and location; referenced, not copied, because the
+  # meshes are large and the loader resolves paths relative to this directory.
+  robotwin_config: assets/embodiments/panthera_phone/config.yml
+  provenance: assets/embodiments/panthera_phone/provenance.json
+
+end_effector:
+  name: panthera_parallel_gripper
+  # Normalised opening, which is what the 7th action dimension carries.
+  opening_range: [0.0, 1.0]
+  # Travel of the finger joint the normalised opening maps onto, from the
+  # embodiment's gripper_scale.
+  finger_travel_m: [0.0, 0.04]
+  contact:
+    # Deliberately far above the object's own friction: a parallel gripper with
+    # realistic finger friction cannot hold a 30 g cylinder through a 90 degree
+    # reorientation, and the alternative was attaching the object to the gripper,
+    # which would not transfer to hardware at all.
+    static_friction: 8.0
+    dynamic_friction: 6.0
+  behaviours:
+    ratchet:
+      module: panthera_sim.behaviours.ratchet
+      entry: GripperRatchet
+      # A larger value is a wider opening.  Arm jitter is absorbed by the
+      # controller and the task tolerates centimetres of arm error, but one
+      # frame of extra opening drops the object and nothing recovers from it.
+      margin: 0.15
+      hold_steps: 3
+      contact_threshold: 2
+      # Not applied while collecting: the oracle's commands carry no jitter, so
+      # the ratchet would be a no-op there and would only add an unrecorded
+      # difference between how data was made and how it is replayed.
+      enabled_for: [evaluation, deployment]
+
+cameras:
+  head: PhoneSRT_Center4_3_Wide
+  wrist: D435

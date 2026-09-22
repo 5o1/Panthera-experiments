@@ -1,0 +1,89 @@
+render_freq: 0
+episode_num: 64
+use_seed: false
+save_freq: 5
+embodiment: [panthera_phone_symmetric]
+language_num: 7
+planner_backend: mplib
+static_friction: 1.2
+dynamic_friction: 1.0
+gripper_static_friction: 8.0
+gripper_dynamic_friction: 6.0
+restitution: 0
+task_randomization:
+  workspace:
+    robot_base_x_m: 0.0
+    robot_base_y_m: -0.35
+    nominal_reach_radius_m: 0.46
+    reach_fraction: 0.75
+    minimum_radius_m: 0.22
+    minimum_angle_deg: 5.0
+    maximum_angle_deg: 175.0
+    radial_bins: 3
+    angular_bins: 12
+    minimum_object_separation_m: 0.16
+  camera_randomization:
+    enabled: true
+    # randomized: one constrained pose per episode, derived from the episode
+    # seed. fixed: every episode reuses the same world pose, so all four
+    # fixed_* values are required and target_xy_jitter_m is ignored. In both
+    # modes the sampled pose must still satisfy the visibility gates.
+    pose_mode: randomized
+    fixed_azimuth_deg:
+    fixed_height_above_table_m:
+    fixed_horizontal_distance_m:
+    fixed_look_at_xyz_m:
+    image_width_px: 320
+    image_height_px: 240
+    vertical_fov_deg: 75.0
+    central_region_fraction: 0.80
+    minimum_height_above_table_m: 0.55
+    maximum_height_above_table_m: 0.95
+    minimum_horizontal_distance_m: 0.65
+    maximum_horizontal_distance_m: 1.10
+    minimum_azimuth_deg: 25.0
+    maximum_azimuth_deg: 155.0
+    minimum_downward_angle_deg: 28.0
+    target_xy_jitter_m: 0.06
+    target_height_min_m: 0.08
+    target_height_max_m: 0.22
+    maximum_sampling_attempts: 512
+domain_randomization:
+  random_background: true
+  cluttered_table: false
+  clean_background_rate: 0.20
+  # Full constrained per-episode extrinsic randomization is defined above;
+  # disable RoboTwin's unrecorded isotropic position jitter.
+  random_head_camera_dis: 0
+  random_table_height: 0
+  random_light: true
+  crazy_random_light_rate: 0.02
+camera:
+  head_camera_type: PhoneSRT_Center4_3_Wide
+  wrist_camera_type: D435
+  collect_head_camera: true
+  collect_wrist_camera: false
+data_type:
+  rgb: true
+  third_view: false
+  depth: false
+  pointcloud: false
+  observer: false
+  endpose: true
+  qpos: true
+  mesh_segmentation: false
+  actor_segmentation: false
+pcd_down_sample_num: 1024
+pcd_crop: true
+save_path: ../data
+clear_cache_freq: 8
+max_seed_attempts: 5000
+max_consecutive_failures: 256
+max_consecutive_exceptions: 8
+async_episode_writer:
+  enabled: true
+  workers: 1
+  max_pending_episodes: 2
+  max_pending_gib: 2.0
+collect_data: true
+eval_video_log: false

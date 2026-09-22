@@ -1,0 +1,225 @@
+# 针对上游 6dde571 重做（原基线 0008ae6，相隔 223 个提交）
+# 每个上游文件一个 patch
+
+diff --git a/scripts/collect_data.py b/scripts/collect_data.py
+index c43587a..46f368b 100644
+--- a/scripts/collect_data.py
++++ b/scripts/collect_data.py
+@@ -15,6 +15,7 @@ import traceback
+ import os
+ import time
+ from argparse import ArgumentParser
++from envs.utils.async_episode_writer import AsyncEpisodeWriter, episode_is_committed
+
+ from description.utils.generate_episode_instructions import generate_episode_descriptions
+
+@@ -150,7 +151,24 @@ def main(task_name=None, task_config=None):
+
+
+ def run(TASK_ENV, args):
+-    epid, suc_num, fail_num, seed_list = 0, 0, 0, []
++    seed_start = int(args.get("seed_start", 0))
++    if seed_start < 0:
++        raise ValueError("seed_start must be nonnegative")
++    retry_delay_s = float(args.get("retry_delay_s", 1.0))
++    max_seed_attempts = int(
++        args.get("max_seed_attempts", max(1000, int(args["episode_num"]) * 200))
++    )
++    max_consecutive_failures = int(args.get("max_consecutive_failures", 128))
++    max_consecutive_exceptions = int(args.get("max_consecutive_exceptions", 8))
++    if (
++        max_seed_attempts <= 0
++        or max_consecutive_failures <= 0
++        or max_consecutive_exceptions <= 0
++    ):
++        raise ValueError("collector failure budgets must be positive")
++    epid, suc_num, fail_num, seed_list = seed_start, 0, 0, []
++    consecutive_failures = 0
++    consecutive_exceptions = 0
+
+     print(f"Task Name: \033[34m{args['task_name']}\033[0m")
+
+@@ -167,10 +185,23 @@ def run(TASK_ENV, args):
+                 if len(seed_list) != 0:
+                     seed_list = [int(i) for i in seed_list]
+                     suc_num = len(seed_list)
+-                    epid = max(seed_list) + 1
++                    epid = max(max(seed_list) + 1, seed_start)
+             print(f"Exist seed file, Start from: {epid} / {suc_num}")
+
+         while suc_num < args["episode_num"]:
++            attempts = epid - seed_start
++            if attempts >= max_seed_attempts:
++                raise RuntimeError(
++                    f"seed candidate budget exhausted: {attempts}/{max_seed_attempts}"
++                )
++            if consecutive_failures >= max_consecutive_failures:
++                raise RuntimeError(
++                    f"consecutive failure budget exhausted: {consecutive_failures}"
++                )
++            if consecutive_exceptions >= max_consecutive_exceptions:
++                raise RuntimeError(
++                    f"consecutive exception budget exhausted: {consecutive_exceptions}"
++                )
+             try:
+                 TASK_ENV.setup_demo(now_ep_num=suc_num, seed=epid, **args)
+                 TASK_ENV.play_once()
+@@ -183,14 +214,23 @@ def run(TASK_ENV, args):
+                             f"planned joints exceed limits (excess={joint_excess:.3f} rad)"
+                         )
+                         fail_num += 1
++                        # A joint-limit rejection is a failure like any other,
++                        # so it has to count against the budget or a run that
++                        # only produces illegal plans never stops.
++                        consecutive_failures += 1
++                        consecutive_exceptions = 0
+                     else:
+                         print(f"simulate data episode {suc_num} success! (seed = {epid})")
+                         seed_list.append(epid)
+                         TASK_ENV.save_traj_data(suc_num)
+                         suc_num += 1
++                        consecutive_failures = 0
++                        consecutive_exceptions = 0
+                 else:
+                     print(f"simulate data episode {suc_num} fail! (seed = {epid})")
+                     fail_num += 1
++                    consecutive_failures += 1
++                    consecutive_exceptions = 0
+
+                 TASK_ENV.close_env()
+
+@@ -202,11 +242,14 @@ def run(TASK_ENV, args):
+                 print("Error: ", e)
+                 print(" -------------")
+                 fail_num += 1
++                consecutive_failures += 1
++                consecutive_exceptions = 0
+                 TASK_ENV.close_env()
+
+                 if args["render_freq"]:
+                     TASK_ENV.viewer.close()
+-                time.sleep(0.3)
++                if retry_delay_s > 0:
++                    time.sleep(retry_delay_s)
+             except Exception as e:
+                 # stack_trace = traceback.format_exc()
+                 print(" -------------")
+@@ -214,11 +257,14 @@ def run(TASK_ENV, args):
+                 print("Error: ", e)
+                 print(" -------------")
+                 fail_num += 1
++                consecutive_failures += 1
++                consecutive_exceptions += 1
+                 TASK_ENV.close_env()
+
+                 if args["render_freq"]:
+                     TASK_ENV.viewer.close()
+-                time.sleep(1)
++                if retry_delay_s > 0:
++                    time.sleep(retry_delay_s)
+
+             epid += 1
+
+@@ -243,50 +289,75 @@ def run(TASK_ENV, args):
+         args["save_data"] = True
+
+         clear_cache_freq = args["clear_cache_freq"]
++        writer_config = args.get("async_episode_writer", {}) or {}
++        writer_enabled = bool(writer_config.get("enabled", False))
++        writer = None
++        if writer_enabled:
++            writer = AsyncEpisodeWriter(
++                args["save_path"],
++                workers=int(writer_config.get("workers", 1)),
++                max_pending_episodes=int(
++                    writer_config.get("max_pending_episodes", 2)
++                ),
++                max_pending_bytes=int(
++                    float(writer_config.get("max_pending_gib", 2.0)) * 1024**3
++                ),
++            )
+
+         st_idx = 0
+
+-        def exist_hdf5(idx):
++        def exist_episode(idx):
++            if writer_enabled:
++                return episode_is_committed(args["save_path"], idx)
+             file_path = os.path.join(
+                 args["save_path"], "data", f"episode_{idx:07d}.hdf5"
+             )
+             return os.path.exists(file_path)
+
+-        while exist_hdf5(st_idx):
++        while exist_episode(st_idx):
+             st_idx += 1
+
+-        for episode_idx in range(st_idx, args["episode_num"]):
+-            print(f"\033[34mTask name: {args['task_name']}\033[0m")
++        try:
++            for episode_idx in range(st_idx, args["episode_num"]):
++                if writer is not None:
++                    writer.poll()
++                print(f"\033[34mTask name: {args['task_name']}\033[0m")
+
+-            TASK_ENV.setup_demo(now_ep_num=episode_idx, seed=seed_list[episode_idx], **args)
++                TASK_ENV.setup_demo(now_ep_num=episode_idx, seed=seed_list[episode_idx], **args)
+
+-            traj_data = TASK_ENV.load_tran_data(episode_idx)
+-            args["left_joint_path"] = traj_data["left_joint_path"]
+-            args["right_joint_path"] = traj_data["right_joint_path"]
+-            TASK_ENV.set_path_lst(args)
++                traj_data = TASK_ENV.load_tran_data(episode_idx)
++                args["left_joint_path"] = traj_data["left_joint_path"]
++                args["right_joint_path"] = traj_data["right_joint_path"]
++                TASK_ENV.set_path_lst(args)
+
+-            info_file_path = os.path.join(args["save_path"], "scene_info.json")
+-
+-            if not os.path.exists(info_file_path):
+-                with open(info_file_path, "w", encoding="utf-8") as file:
+-                    json.dump({}, file, ensure_ascii=False)
++                info_file_path = os.path.join(args["save_path"], "scene_info.json")
+
+-            with open(info_file_path, "r", encoding="utf-8") as file:
+-                info_db = json.load(file)
++                if not os.path.exists(info_file_path):
++                    with open(info_file_path, "w", encoding="utf-8") as file:
++                        json.dump({}, file, ensure_ascii=False)
+
+-            info = TASK_ENV.play_once()
+-            info_db[f"episode_{episode_idx}"] = info
++                with open(info_file_path, "r", encoding="utf-8") as file:
++                    info_db = json.load(file)
+
+-            with open(info_file_path, "w", encoding="utf-8") as file:
+-                json.dump(info_db, file, ensure_ascii=False, indent=4)
++                info = TASK_ENV.play_once()
++                info_db[f"episode_{episode_idx}"] = info
+
+-            episode_descriptions = build_episode_instructions(args, info, episode_idx)
+-            TASK_ENV.close_env(clear_cache=((episode_idx + 1) % clear_cache_freq == 0))
+-            TASK_ENV.merge_pkl_to_hdf5_video(
+-                instructions=episode_descriptions["seen"],
+-            )
+-            TASK_ENV.remove_data_cache()
+-            assert TASK_ENV.check_success(), "Collect Error"
++                with open(info_file_path, "w", encoding="utf-8") as file:
++                    json.dump(info_db, file, ensure_ascii=False, indent=4)
++
++                episode_descriptions = build_episode_instructions(args, info, episode_idx)
++                TASK_ENV.close_env(clear_cache=((episode_idx + 1) % clear_cache_freq == 0))
++                assert TASK_ENV.check_success(), "Collect Error"
++                if writer is None:
++                    TASK_ENV.merge_pkl_to_hdf5_video(
++                        instructions=episode_descriptions["seen"],
++                    )
++                    TASK_ENV.remove_data_cache()
++                else:
++                    writer.submit(episode_idx, TASK_ENV.folder_path["cache"])
++        finally:
++            if writer is not None:
++                writer.close()
+
+
+ if __name__ == "__main__":

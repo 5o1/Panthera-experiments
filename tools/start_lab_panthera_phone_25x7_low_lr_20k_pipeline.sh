@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state="${workspace}/.panthera-phone-25x7-low-lr-20k-pipeline-state"
+state="${workspace}/state/panthera-phone-25x7-low-lr-20k-pipeline-state"
 
 if [[ -d "$state" ]] && find "$state" -mindepth 1 -print -quit | grep -q .; then
   echo "错误：25x7 超低学习率 20k 流水线状态目录非空：${state}" >&2
@@ -27,7 +27,7 @@ for gpu in 1 2 3; do
 done
 
 mkdir -p "$state"
-nohup bash "${workspace}/run_lab_panthera_phone_25x7_low_lr_20k_pipeline.sh" \
+nohup bash "${workspace}/bin/run_lab_panthera_phone_25x7_low_lr_20k_pipeline.sh" \
   >"${state}/launcher.log" 2>&1 </dev/null &
 pid=$!
 printf '%s\n' "$pid" >"${state}/launcher-pid.txt"

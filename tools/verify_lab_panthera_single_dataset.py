@@ -59,9 +59,21 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     root = args.dataset_root.resolve()
-    scene = json.loads((root / "scene_info.json").read_text(encoding="utf-8"))
-    if len(scene) != args.expected_episodes:
-        raise ValueError(f"expected {args.expected_episodes} scene records")
+    # The dataset's own snapshot, rather than the file behind it: the layout of
+    # that file is free to change, the access layer is not.
+    import sys
+
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parents[1] / "packages/panthera_sim")
+    )
+    from dataset import open_dataset
+
+    dataset = open_dataset(root)
+    if len(dataset.episode_ids()) != args.expected_episodes:
+        raise ValueError(
+            f"expected {args.expected_episodes} episodes, found "
+            f"{len(dataset.episode_ids())}"
+        )
     if args.workers <= 0:
         raise ValueError("workers must be positive")
 
@@ -73,7 +85,9 @@ def main() -> int:
             if not path.is_file() or path.stat().st_size <= 0:
                 raise ValueError(f"missing or empty episode artifact: {path}")
 
-        metadata = scene[f"episode_{episode_id}"]["panthera_episode"]
+        # These are task-level, recorded once in the snapshot rather than per
+        # episode, which is what they always were.
+        metadata = dataset.task_config
         if (
             metadata.get("schema_version") != args.expected_schema_version
             or metadata.get("robot_count") != 1

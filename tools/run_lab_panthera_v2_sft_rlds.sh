@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
+# 已弃用（2026-09-17）：128 条 schema 10 线退役，正式训练改用固定机位 1280。
+# 其 4.0.0 产物已冻结、rlds.ok 仍在，本入口保留作历史证据，不要再运行。
+# 版本号保持 4.0.0 以匹配磁盘上的冻结产物；当前 builder 已是 4.1.0，重跑会失败。
 
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 source_root="${workspace}/data/place_randomized_cylinder_in_socket/panthera_phone_cylinder_socket_v2_single_grasp_sft_v1"
-data_root="${workspace}/rlds_phone_cylinder_socket_v2_sft_v1"
-adapter_root="${workspace}/panthera-openvla-adapter"
-dataset_state="${workspace}/.panthera-v2-single-grasp-formal-state"
-media_state="${workspace}/.panthera-v2-schema10-media-audit-state"
-state_root="${workspace}/.panthera-v2-schema10-rlds-state"
+data_root="${workspace}/datasets/rlds/rlds_phone_cylinder_socket_v2_sft_v1"
+adapter_root="${workspace}/packages/panthera_vla"
+dataset_state="${workspace}/state/panthera-v2-single-grasp-formal-state"
+media_state="${workspace}/state/panthera-v2-schema10-media-audit-state"
+state_root="${workspace}/state/panthera-v2-schema10-rlds-state"
 summary_path="${state_root}/rlds-summary.json"
 split_path="${state_root}/split.json"
 dataset_name=panthera_phone_cylinder_socket_v2
 dataset_version_root="${data_root}/${dataset_name}/4.0.0"
 scene_profile=panthera_phone_symmetric_single_grasp_direct_release_cylinder_socket_v2
-activation_script="${workspace}/activate_lab_vla.sh"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：禁止使用 root 转换 RLDS。" >&2
@@ -41,10 +44,13 @@ if [[ -f "${state_root}/rlds.ok" && -s "$summary_path" ]]; then
   python3 -m json.tool "$summary_path"
   exit 0
 fi
-if [[ -e "$dataset_version_root" && ! -s "${dataset_version_root}/dataset_info.json" ]]; then
-  interrupted="${dataset_version_root}.interrupted-$(date +%Y%m%d-%H%M%S)"
-  mv "$dataset_version_root" "$interrupted"
-  echo "已可恢复归档中断的 TFDS 输出：${interrupted}"
+# 走到这里说明 rlds.ok 未通过，已有 TFDS 输出无论是否完整都未经验收。对完整目录
+# download_and_prepare 是 no-op，会静默复用旧字节，而下游门禁读的 splits 来自源 HDF5，
+# 察觉不到复用；因此一律可恢复归档后重建。
+if [[ -e "$dataset_version_root" ]]; then
+  unverified="${dataset_version_root}.unverified-$(date +%Y%m%d-%H%M%S)"
+  mv "$dataset_version_root" "$unverified"
+  echo "已可恢复归档未经验收的 TFDS 输出：${unverified}"
 fi
 
 # 固定 16 条验证集：8 条直立 + 每个平躺角度区间各 1 条；组内优先补齐左右侧和空间格。

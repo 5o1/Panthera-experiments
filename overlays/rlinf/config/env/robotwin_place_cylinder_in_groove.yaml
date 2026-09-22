@@ -1,0 +1,77 @@
+env_type: robotwin
+total_num_envs: null
+
+auto_reset: false
+ignore_terminations: false
+reward_coef: 1.0
+use_custom_reward: true
+use_rel_reward: true
+center_crop: true
+
+seed: 0
+group_size: 1
+use_fixed_reset_state_ids: false
+max_steps_per_rollout_epoch: 800
+max_episode_steps: 800
+is_eval: true
+
+assets_path: /data/lyy/panthera-vla/runtime/robotwin
+seeds_path: ${oc.env:PANTHERA_CYLINDER_EVAL_SEEDS}
+
+video_cfg:
+  save_video: true
+  info_on_video: true
+  video_base_dir: ${runner.logger.log_path}/video/eval
+
+enable_offload: false
+
+task_config:
+  task_name: place_cylinder_in_groove
+  action_dim: 7
+  step_lim: 800
+  planner_backend: mplib
+  render_freq: 0
+  episode_num: 16
+  use_seed: false
+  save_freq: 5
+  embodiment: [panthera]
+  language_num: 7
+  static_friction: 1.2
+  dynamic_friction: 1.0
+  restitution: 0
+  grasp_quaternion_wxyz: [0.7071067811865476, 0.0, 0.7071067811865476, 0.0]
+  task_randomization:
+    cylinder_y_base_m: -0.02
+    cylinder_x_m: 0.020
+    cylinder_y_m: 0.015
+    groove_x_m: 0.020
+    groove_y_m: 0.015
+  domain_randomization:
+    random_background: true
+    cluttered_table: false
+    clean_background_rate: 0.20
+    random_head_camera_dis: 0.02
+    random_table_height: 0
+    random_light: true
+    crazy_random_light_rate: 0.02
+  camera:
+    head_camera_type: D435
+    wrist_camera_type: D435
+    collect_head_camera: true
+    collect_wrist_camera: false
+  data_type:
+    rgb: true
+    third_view: false
+    depth: false
+    pointcloud: false
+    observer: false
+    endpose: true
+    qpos: true
+    mesh_segmentation: false
+    actor_segmentation: false
+  pcd_down_sample_num: 1024
+  pcd_crop: true
+  save_path: ./data
+  clear_cache_freq: 4
+  collect_data: false
+  eval_video_log: false

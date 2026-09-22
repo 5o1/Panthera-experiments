@@ -1,0 +1,27 @@
+{
+  "files_sha256": {
+    "LICENSE.HighTorque-Robotics": "67f547f923b2c61494b441f1f892b878a16e82d2076db376faa111e1a9fac112",
+    "config.yml": "0353c9faf2b23ed49e7e0b8f7e393c8270f62eda47f7b95c3b2a39326d654d37",
+    "meshes/L_finger.STL": "a152384aaa7ea128c868ba9a5a679592e74fb9d684a9ba1e69699004194ecbd1",
+    "meshes/R_finger.STL": "1b5ff532657cbd6a1376e358b88adf171c692bd4882848eb3e5931b9f38c9eee",
+    "meshes/base_link.STL": "277ec868628d146dbdd2935f36590c0a9b054bb0223acde8d97a401dadafb0f9",
+    "meshes/gripper_center.STL": "530a4849e24d12b64cd1e8641e55e673fefd69c698112e48a5381310985c3245",
+    "meshes/link1.STL": "13632c3922ba5091dcfc77110bdd8c04328400f4aa322a04fdfc8cf4d1d4e420",
+    "meshes/link2.STL": "4bb9b83c18b63eb6ac944b6bffea7603783d98bf788919229c15a044828236ff",
+    "meshes/link3.STL": "dd57cb9aef5c0cffab25c1bef4419e514abe8ff93ef8f545761aeef2ad4b9f27",
+    "meshes/link4.STL": "868cc17ad0a1d68824a0ca977621bfad1fd2aa2207befa3f5a98b9366c52d7c4",
+    "meshes/link5.STL": "fc2a62df5f44986851d2453ca04e82648f04266da40c250614211a5cb8a1bd35",
+    "meshes/link6.STL": "67f1c49400ce786e11a6a2d1e573caf1b9f0a37a159fea829c193cd0eef2395b",
+    "panthera.srdf": "765d1c812e709128bdbd3422feee8d7670f25be05348b46770ffaae7529e95b9",
+    "panthera.urdf": "9e4d49016078f98dfc6bb1d7bf1a7dab02d1cabc038df66a17f22b06ee3d5376"
+  },
+  "simulation_changes": [
+    "rewrote package:// mesh URIs to embodiment-relative paths",
+    "added a minimal SRDF arm group derived from the official MoveIt SRDF",
+    "added RoboTwin joint, gripper, TCP and placement metadata",
+    "used the official MoveIt pose1 group state as the non-singular simulation home"
+  ],
+  "source": "https://github.com/HighTorque-Robotics/Panthera-HT_ROS2.git",
+  "source_commit": "b08633d6c5bce89baad1821fd598243a84bc3a84",
+  "source_urdf": "src/panthera_ht_ros_description/urdf/panthera_ht_ros_description_gripper.xacro"
+}

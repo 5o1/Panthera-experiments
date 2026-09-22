@@ -1,0 +1,4 @@
+# Generated: assembled runtime trees and per-shard configs.
+# Nothing here is a source of truth; rebuild with pipelines/assemble_runtime.py.
+*
+!.gitignore

@@ -3,15 +3,21 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.panthera-physical-replay-probe-state"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+overlay_root="${workspace}/overlays/robotwin"
+oracle_runner="${workspace}/packages/panthera_sim/diagnostics/run_oracle_smoke.py"
+replay_script="${workspace}/archive/superseded/replay_panthera_dataset.py"
+state_root="${workspace}/state/panthera-physical-replay-probe-state"
 result_root="${workspace}/results/panthera-physical-replay-probe"
 task_name="place_cylinder_in_groove"
 task_config="panthera_single_cylinder_physical_replay_probe"
 dataset_root="${workspace}/data/${task_name}/${task_config}"
-activation_script="${workspace}/activate_lab_vla.sh"
-expected_robotwin_commit="0008ae6800df9f75fc8de7098bacb01735fd8fd2"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2
@@ -26,8 +32,8 @@ done
 for required in \
   "$activation_script" \
   "${overlay_root}/envs/${task_name}.py" \
-  "${overlay_root}/replay_panthera_dataset.py" \
-  "${overlay_root}/run_oracle_smoke.py" \
+  "$replay_script" \
+  "$oracle_runner" \
   "${overlay_root}/description/task_instruction/${task_name}.json" \
   "${overlay_root}/task_config/${task_config}.yml"; do
   if [[ ! -s "$required" ]]; then
@@ -35,12 +41,8 @@ for required in \
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-embodiment-state/verified.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-embodiment-state/verified.ok" ]]; then
   echo "错误：Panthera embodiment 尚未通过验收。" >&2
-  exit 1
-fi
-if [[ $(git -C "$robotwin_root" rev-parse HEAD) != "$expected_robotwin_commit" ]]; then
-  echo "错误：RoboTwin checkout 不是已固定提交。" >&2
   exit 1
 fi
 
@@ -54,8 +56,8 @@ fi
 manifest_path="${state_root}/input.sha256"
 current_manifest=$(sha256sum \
   "${overlay_root}/envs/${task_name}.py" \
-  "${overlay_root}/replay_panthera_dataset.py" \
-  "${overlay_root}/run_oracle_smoke.py" \
+  "$replay_script" \
+  "$oracle_runner" \
   "${overlay_root}/task_config/${task_config}.yml")
 if [[ -f "${state_root}/probe.ok" && -f "$manifest_path" ]] && \
    [[ $(<"$manifest_path") == "$current_manifest" ]]; then
@@ -72,21 +74,11 @@ if [[ -e "$dataset_root" ]]; then
 fi
 rm -f "${state_root}/probe.ok"
 
-install -m 0644 \
-  "${overlay_root}/envs/${task_name}.py" \
-  "${robotwin_root}/envs/${task_name}.py"
-install -m 0644 \
-  "${overlay_root}/description/task_instruction/${task_name}.json" \
-  "${robotwin_root}/description/task_instruction/${task_name}.json"
-install -m 0644 \
-  "${overlay_root}/task_config/${task_config}.yml" \
-  "${robotwin_root}/task_config/${task_config}.yml"
-
 # shellcheck disable=SC1090
 source "$activation_script"
 python -m py_compile \
   "${robotwin_root}/envs/${task_name}.py" \
-  "${overlay_root}/replay_panthera_dataset.py"
+  "$replay_script"
 
 run_log="${state_root}/probe-${run_stamp}.log"
 printf '%s\n' "$run_log" >"${state_root}/run-log.txt"
@@ -96,7 +88,7 @@ printf '%s\n' "$run_log" >"${state_root}/run-log.txt"
 # spinning until the outer timeout.
 PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=30s \
   "${PANTHERA_PHYSICAL_REPLAY_PLAN_TIMEOUT:-12m}" \
-  python "${overlay_root}/run_oracle_smoke.py" \
+  python "$oracle_runner" \
     --robotwin-root "$robotwin_root" \
     --output-root "${result_root}/planning-check" \
     --task-config "${task_config}.yml" \
@@ -107,7 +99,7 @@ set +e
   cd "$robotwin_root"
   PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=60s \
     "${PANTHERA_PHYSICAL_REPLAY_PROBE_TIMEOUT:-35m}" \
-    python script/collect_data.py "$task_name" "$task_config"
+    python scripts/collect_data.py "$task_name" "$task_config"
 ) 2>&1 | tee "$run_log"
 collect_status=${PIPESTATUS[0]}
 set -e
@@ -148,7 +140,7 @@ with h5py.File(root / "data/episode0.hdf5", "r") as data:
         raise SystemExit("probe action contract is invalid")
 PY
 
-python "${overlay_root}/replay_panthera_dataset.py" \
+python "$replay_script" \
   --robotwin-root "$robotwin_root" \
   --dataset-root "$dataset_root" \
   --task-config "${task_config}.yml" \

@@ -3,19 +3,19 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-activation_script="${workspace}/activate_lab_vla.sh"
-adapter_root="${workspace}/panthera-openvla-adapter"
-data_root="${PANTHERA_SFT_DATA_ROOT:-${workspace}/rlds_single_sft_v1}"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
+adapter_root="${workspace}/packages/panthera_vla"
+data_root="${PANTHERA_SFT_DATA_ROOT:-${workspace}/datasets/rlds/rlds_single_sft_v1}"
 model_root="${PANTHERA_SFT_INITIAL_MODEL:-${workspace}/models/openvla-oft-place-empty-cup}"
 openvla_constants_patch="${workspace}/patches/openvla_oft_panthera_constants.patch"
-openvla_site_packages="${workspace}/RLinf/.venv/lib/python3.11/site-packages"
+openvla_site_packages="${workspace}/runtime/rlinf/.venv/lib/python3.11/site-packages"
 dataset_name="${PANTHERA_SFT_DATASET_NAME:-panthera_single_cylinder}"
 dataset_version="${PANTHERA_SFT_DATASET_VERSION:-2.0.0}"
 run_root="${PANTHERA_SFT_SMOKE_RUN_ROOT:-${workspace}/runs/panthera-single-openvla-sft-smoke}"
 run_id="${PANTHERA_SFT_SMOKE_RUN_ID:-panthera-single-cylinder-sft-step-smoke}"
 run_dir="${run_root}/${run_id}"
-state_root="${PANTHERA_SFT_SMOKE_STATE_ROOT:-${workspace}/.panthera-single-openvla-sft-smoke-state}"
-rlds_marker="${PANTHERA_SFT_RLDS_MARKER:-${workspace}/.panthera-single-sft-rlds-state/rlds.ok}"
+state_root="${PANTHERA_SFT_SMOKE_STATE_ROOT:-${workspace}/state/panthera-single-openvla-sft-smoke-state}"
+rlds_marker="${PANTHERA_SFT_RLDS_MARKER:-${workspace}/state/panthera-single-sft-rlds-state/rlds.ok}"
 smoke_gpu="${PANTHERA_SFT_GPU:-0}"
 action_chunk="${PANTHERA_ACTION_CHUNK:-5}"
 robot_platform="${PANTHERA_ROBOT_PLATFORM:-BRIDGE}"
@@ -106,6 +106,9 @@ export PANTHERA_RLDS_SCENE_PROFILE="${PANTHERA_SFT_SCENE_PROFILE:-}"
 run_stamp=$(date +%Y%m%d-%H%M%S)
 run_log="${state_root}/train-${run_stamp}.log"
 printf '%s\n' "$run_log" >"${state_root}/run-log.txt"
+# 早停补丁删除了 max_steps 退出分支，因此 --max_steps 单独无法结束训练。
+# 这里改走受支持的出口：第一次验证建立基线并存档，第二次因 min_delta 极大必然
+# 不算改善，patience=1 立即以 early_stopping 正常结束。
 set +e
 timeout --signal=INT --kill-after=90s "${PANTHERA_SFT_STEP_TIMEOUT:-45m}" \
   torchrun --standalone --nproc-per-node=1 "${adapter_root}/run_finetune.py" \
@@ -125,7 +128,11 @@ timeout --signal=INT --kill-after=90s "${PANTHERA_SFT_STEP_TIMEOUT:-45m}" \
     --image_aug false \
     --lora_rank 8 \
     --merge_lora_during_training false \
-    --use_val_set false \
+    --use_val_set true \
+    --val_freq 1 \
+    --val_time_limit 60 \
+    --early_stopping_min_delta 10.0 \
+    --early_stopping_patience 1 \
     --wandb_entity panthera-local \
     --wandb_project panthera-openvla-sft-smoke \
     --wandb_log_freq 1 \
@@ -141,11 +148,15 @@ if grep -Eq 'Traceback \(most recent call last\)|RuntimeError:|CUDA out of memor
   echo "错误：训练日志含致命异常或非有限值。" >&2
   exit 1
 fi
-if ! grep -q 'Max step 1 reached' "$run_log"; then
+# 早停补丁删除了 max_steps 退出分支，本 smoke 改为走验证集早停正常退出，
+# 因此两条退出路径都要接受，否则训练成功却写不出 train.ok。
+if ! grep -qE 'Max step 1 reached|Early stopping patience exhausted' "$run_log"; then
   echo "错误：训练主循环未到达预定退出点。" >&2
   exit 1
 fi
-if [[ ! -s "${run_dir}/dataset_statistics.json" ]]; then
+# 数据统计随 checkpoint 落在 <run_dir>/*_chkpt/ 下，顶层路径并不总是存在。
+if [[ ! -s "${run_dir}/dataset_statistics.json" ]] \
+  && ! compgen -G "${run_dir}/*_chkpt/dataset_statistics.json" >/dev/null; then
   echo "错误：训练入口没有保存 Panthera 数据统计。" >&2
   exit 1
 fi

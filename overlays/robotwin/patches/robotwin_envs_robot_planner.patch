@@ -1,0 +1,34 @@
+# 针对上游 6dde571 重做（原基线 0008ae6，相隔 223 个提交）
+# 每个上游文件一个 patch
+
+diff --git a/envs/robot/planner.py b/envs/robot/planner.py
+index 21ae432..2892f0b 100644
+--- a/envs/robot/planner.py
++++ b/envs/robot/planner.py
+@@ -1,6 +1,7 @@
+ import mplib.planner
+ import mplib
+ import numpy as np
++import xml.etree.ElementTree as ET
+ import pdb
+ import traceback
+ import numpy as np
+@@ -308,6 +309,18 @@ class MplibPlanner:
+         else:
+             planning_world = SapienPlanningWorld(scene, [robot_entity])
+             self.planner = SapienPlanner(planning_world, move_group)
++            # SapienPlanningWorld does not consume the SRDF passed to
++            # RoboTwin.  Applying its disabled link pairs to the world's
++            # allowed-collision matrix gives scene-backed planning the
++            # same self-collision semantics as a standalone
++            # mplib.Planner, which is what the arm was validated under.
++            if srdf_path:
++                for pair in ET.parse(srdf_path).getroot().findall(
++                    "disable_collisions"
++                ):
++                    self.planner.acm.set_entry(
++                        pair.attrib["link1"], pair.attrib["link2"], True
++                    )
+
+         self.planner_type = planner_type
+         self.plan_step_lim = 2500

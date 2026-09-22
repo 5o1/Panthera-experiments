@@ -4,8 +4,8 @@ set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 dataset_root="${workspace}/data/place_vertical_cylinder_in_groove/panthera_phone_vertical_sft_v1"
-state_root="${workspace}/.panthera-phone-media-audit-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+state_root="${workspace}/state/panthera-phone-media-audit-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 auditor="${workspace}/verify_lab_panthera_single_dataset.py"
 summary="${state_root}/media-summary.json"
 
@@ -25,7 +25,7 @@ for required in "$activation_script" "$auditor"; do
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-phone-sft-dataset-state/dataset.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-phone-sft-dataset-state/dataset.ok" ]]; then
   echo "错误：phone-SRT 对齐版数据尚未通过基础验收。" >&2
   exit 1
 fi

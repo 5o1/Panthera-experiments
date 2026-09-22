@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-train_state="${workspace}/.panthera-phone-openvla-sft-25x7-low-lr-20k-state"
+train_state="${workspace}/state/panthera-phone-openvla-sft-25x7-low-lr-20k-state"
 model="${workspace}/runs/panthera-phone-openvla-sft/panthera-phone-wide-v3-vertical-sft-25x7-20000steps-lr1e5-nowarmup"
 
 run_gate() {
@@ -11,9 +11,9 @@ run_gate() {
   local seeds=$2
 
   PANTHERA_POLICY_MODEL="$model" \
-  PANTHERA_EVAL_STATE_ROOT="${workspace}/.panthera-phone-${name}-state" \
+  PANTHERA_EVAL_STATE_ROOT="${workspace}/state/panthera-phone-${name}-state" \
   PANTHERA_EVAL_LOG_ROOT="${workspace}/logs/panthera-phone-${name}" \
-  PANTHERA_EVAL_TRACE_DIR="${workspace}/.panthera-phone-${name}-state/trajectory-traces" \
+  PANTHERA_EVAL_TRACE_DIR="${workspace}/state/panthera-phone-${name}-state/trajectory-traces" \
   PANTHERA_EVAL_SEED_SOURCE="$seeds" \
   PANTHERA_EVAL_TRAIN_MARKER="${train_state}/train.ok" \
   PANTHERA_EVAL_TRAIN_STATE="$train_state" \
@@ -27,17 +27,17 @@ run_gate() {
   PANTHERA_EVAL_TRAJECTORIES=16 \
   PANTHERA_EVAL_GPUS=1,2 \
   PANTHERA_EVAL_MIN_SUCCESS=0.75 \
-  bash "${workspace}/run_lab_panthera_phone_policy_eval.sh"
+  bash "${workspace}/bin/run_lab_panthera_phone_policy_eval.sh"
 }
 
 run_gate \
   policy-eval-25x7-low-lr-20k-release-gate-h18-dev16 \
-  "${workspace}/panthera-rlinf-overlay/seeds/panthera_phone_vertical_eval_seeds.json"
+  "${workspace}/overlays/rlinf/seeds/panthera_phone_vertical_eval_seeds.json"
 
 # `set -e` prevents this call unless the dev16 evaluator wrote eval.ok.
 run_gate \
   policy-eval-25x7-low-lr-20k-release-gate-h18-final16 \
-  "${workspace}/panthera-rlinf-overlay/seeds/panthera_phone_vertical_final_seeds_v2.json"
+  "${workspace}/overlays/rlinf/seeds/panthera_phone_vertical_final_seeds_v2.json"
 
 date --iso-8601=seconds \
-  >"${workspace}/.panthera-phone-25x7-low-lr-20k-gates.ok"
+  >"${workspace}/state/panthera-phone-25x7-low-lr-20k-gates.ok"

@@ -3,13 +3,14 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${workspace}/RLinf"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-rlinf-overlay"
-robotwin_overlay="${workspace}/panthera-robotwin-overlay"
-state_root="${PANTHERA_EVAL_STATE_ROOT:-${workspace}/.panthera-single-policy-eval-state}"
+rlinf_root="${workspace}/runtime/rlinf"
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+overlay_root="${workspace}/overlays/rlinf"
+robotwin_overlay="${workspace}/overlays/robotwin"
+state_root="${PANTHERA_EVAL_STATE_ROOT:-${workspace}/state/panthera-single-policy-eval-state}"
 log_root="${PANTHERA_EVAL_LOG_ROOT:-${workspace}/logs/panthera-single-policy-eval}"
-activation_script="${workspace}/activate_lab_vla.sh"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 task_name="${PANTHERA_EVAL_TASK_NAME:-place_cylinder_in_groove}"
 scene_profile="${PANTHERA_EVAL_SCENE_PROFILE:-}"
 unnorm_key="${PANTHERA_EVAL_UNNORM_KEY:-panthera_single_cylinder}"
@@ -17,13 +18,12 @@ eval_config_name="${PANTHERA_EVAL_CONFIG_NAME:-robotwin_panthera_cylinder_openvl
 env_source="${PANTHERA_EVAL_ENV_SOURCE:-${overlay_root}/config/env/robotwin_place_cylinder_in_groove.yaml}"
 eval_source="${PANTHERA_EVAL_CONFIG_SOURCE:-${overlay_root}/evaluations/robotwin_panthera_cylinder_openvlaoft_eval.yaml}"
 seed_source="${PANTHERA_EVAL_SEED_SOURCE:-${overlay_root}/seeds/panthera_cylinder_eval_seeds.json}"
-vector_action_patch="${robotwin_overlay}/patches/robotwin_configurable_action_dim.patch"
-openvla_l1_eval_patch="${workspace}/panthera-rlinf-overlay/patches/rlinf_openvla_oft_l1_eval.patch"
-cuda_visible_subset_patch="${workspace}/panthera-rlinf-overlay/patches/rlinf_cuda_visible_subset.patch"
-eval_execution_horizon_patch="${workspace}/panthera-rlinf-overlay/patches/rlinf_eval_execution_horizon.patch"
-eval_rollout_execution_horizon_patch="${workspace}/panthera-rlinf-overlay/patches/rlinf_eval_rollout_execution_horizon.patch"
+openvla_l1_eval_patch="${workspace}/overlays/rlinf/patches/rlinf_openvla_oft_l1_eval.patch"
+cuda_visible_subset_patch="${workspace}/overlays/rlinf/patches/rlinf_cuda_visible_subset.patch"
+eval_execution_horizon_patch="${workspace}/overlays/rlinf/patches/rlinf_eval_execution_horizon.patch"
+eval_rollout_execution_horizon_patch="${workspace}/overlays/rlinf/patches/rlinf_eval_rollout_execution_horizon.patch"
 openvla_constants_patch="${workspace}/patches/openvla_oft_panthera_constants.patch"
-openvla_site_packages="${workspace}/RLinf/.venv/lib/python3.11/site-packages"
+openvla_site_packages="${workspace}/runtime/rlinf/.venv/lib/python3.11/site-packages"
 env_target="${PANTHERA_EVAL_ENV_TARGET:-${rlinf_root}/examples/embodiment/config/env/robotwin_place_cylinder_in_groove.yaml}"
 eval_target="${PANTHERA_EVAL_CONFIG_TARGET:-${rlinf_root}/evaluations/robotwin/robotwin_panthera_cylinder_openvlaoft_eval.yaml}"
 task_source="${PANTHERA_EVAL_TASK_SOURCE:-${robotwin_overlay}/envs/place_cylinder_in_groove.py}"
@@ -31,13 +31,27 @@ instruction_source="${PANTHERA_EVAL_INSTRUCTION_SOURCE:-${robotwin_overlay}/desc
 task_target="${robotwin_root}/envs/${task_name}.py"
 instruction_target="${robotwin_root}/description/task_instruction/${task_name}.json"
 minimum_success="${PANTHERA_EVAL_MIN_SUCCESS:-0.75}"
-config_marker="${PANTHERA_EVAL_CONFIG_MARKER:-${workspace}/.panthera-single-eval-config-state/config.ok}"
-train_marker="${PANTHERA_EVAL_TRAIN_MARKER:-${workspace}/.panthera-single-openvla-sft-state/train.ok}"
-train_state="${PANTHERA_EVAL_TRAIN_STATE:-${workspace}/.panthera-single-openvla-sft-state}"
+config_marker="${PANTHERA_EVAL_CONFIG_MARKER:-${workspace}/state/panthera-single-eval-config-state/config.ok}"
+train_marker="${PANTHERA_EVAL_TRAIN_MARKER:-${workspace}/state/panthera-single-openvla-sft-state/train.ok}"
+train_state="${PANTHERA_EVAL_TRAIN_STATE:-${workspace}/state/panthera-single-openvla-sft-state}"
 eval_gpu_spec="${PANTHERA_EVAL_GPUS:-0,1,2,3}"
 eval_gpu_spec="${eval_gpu_spec//,/ }"
 read -r -a eval_gpus <<<"$eval_gpu_spec"
 eval_trajectories="${PANTHERA_EVAL_TRAJECTORIES:-16}"
+# One env per GPU leaves both halves of the loop idle: RoboTwin physics is CPU
+# work that blocks inference, and a batch of one per rollout worker is latency
+# bound on a 7B model.  RoboTwin's VectorEnv steps its sub-environments on a
+# thread pool and only takes its global lock in setup/reset, so several envs per
+# GPU overlap physics with each other and widen the inference batch.  Default is
+# 1 so existing runs keep their exact shape.
+envs_per_gpu="${PANTHERA_EVAL_ENVS_PER_GPU:-1}"
+# Pin the scene each seed rebuilds.  Collection overrode the seed's posture and
+# lying angle per shard and recorded only the outcome, so a dataset seed rebuilds
+# a different scene about half the time -- a different posture, not just a
+# different angle.  Point this at a registry (built by
+# envs/panthera_scene_registry.py from a dataset's scene_info.json) to evaluate
+# on the recorded scenes; leave it empty to sample fresh scenes as before.
+scene_registry="${PANTHERA_EVAL_SCENE_REGISTRY:-}"
 max_episode_steps="${PANTHERA_EVAL_MAX_EPISODE_STEPS:-800}"
 required_initial_gripper="${PANTHERA_EVAL_REQUIRED_INITIAL_GRIPPER_OPENING:-}"
 action_chunk="${PANTHERA_ACTION_CHUNK:-5}"
@@ -72,9 +86,84 @@ if [[ ! "$max_episode_steps" =~ ^[1-9][0-9]*$ ]]; then
   echo "错误：PANTHERA_EVAL_MAX_EPISODE_STEPS 必须是正整数。" >&2
   exit 1
 fi
+# The budget counts 50 Hz actions: RLinf adds chunk_actions.shape[1] per policy
+# call and truncates at max_episode_steps.  A budget below what the expert's own
+# trajectories need makes part of the eval unwinnable, and the run still prints a
+# success rate as if it were measuring the policy.  Floors are the measured
+# expert lengths for each task's own dataset.
+case "$task_name" in
+  place_randomized_cylinder_in_socket)
+    # fixedcam 1280: upright max 1283, lying median 2211 / p95 2920 / max 5101.
+    # 1600 leaves only 4.8% of lying episodes completable, capping an 18-seed
+    # half-lying eval at 52.4% however good the policy is.
+    minimum_episode_steps=3200
+    ;;
+  *)
+    minimum_episode_steps=0
+    ;;
+esac
+# A throughput or utilisation probe wants a deliberately short run, which the
+# floor would otherwise block.  Allow it explicitly, and mark the result so its
+# success rate is never mistaken for a measurement of the policy.
+allow_short_budget="${PANTHERA_EVAL_ALLOW_SHORT_BUDGET:-0}"
+budget_is_scoring=1
+if (( max_episode_steps < minimum_episode_steps )); then
+  if [[ "$allow_short_budget" == "1" ]]; then
+    budget_is_scoring=0
+    echo "警告：动作预算 ${max_episode_steps} 低于 ${task_name} 所需的 ${minimum_episode_steps}；" >&2
+    echo "      本次结果仅用于吞吐探测，成功率不可解读（scoring=false）。" >&2
+  else
+    echo "错误：${task_name} 的动作预算至少需要 ${minimum_episode_steps}，当前为 ${max_episode_steps}；" >&2
+    echo "      低于该值时专家轨迹自身都无法跑完，成功率不可解读。" >&2
+    echo "      仅做吞吐探测时设 PANTHERA_EVAL_ALLOW_SHORT_BUDGET=1。" >&2
+    exit 1
+  fi
+fi
+# RLinf's budget is only one of the two limits.  In eval_mode ``_base_task``
+# discards the step_lim it was handed and re-reads _eval_step_limit.yml, falling
+# back to 1000 for a task the file does not list -- silently, with only a printed
+# line.  Whichever limit is lower truncates, so an unlisted task caps the eval at
+# 1000 actions no matter what the config says.
+if (( minimum_episode_steps > 0 && budget_is_scoring == 1 )); then
+  step_limit_file="${robotwin_root}/env_cfg/task_config/_eval_step_limit.yml"
+  task_step_lim=$(python3 - "$step_limit_file" "$task_name" <<'PY'
+import sys
+import yaml
+
+path, task = sys.argv[1], sys.argv[2]
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+except OSError:
+    print(-1)
+else:
+    print(int(data.get(task, -1)))
+PY
+)
+  if (( task_step_lim < minimum_episode_steps )); then
+    echo "错误：${step_limit_file} 中 ${task_name} 的 step_lim 为 ${task_step_lim}，" >&2
+    echo "      低于所需的 ${minimum_episode_steps}（缺项时 RoboTwin 会静默回落到 1000）。" >&2
+    exit 1
+  fi
+fi
 if [[ ! "$action_chunk" =~ ^[1-9][0-9]*$ ]]; then
   echo "错误：PANTHERA_ACTION_CHUNK 必须是正整数。" >&2
   exit 1
+fi
+if [[ ! "$envs_per_gpu" =~ ^[1-9][0-9]*$ ]]; then
+  echo "错误：PANTHERA_EVAL_ENVS_PER_GPU 必须是正整数。" >&2
+  exit 1
+fi
+scene_registry_overrides=()
+if [[ -n "$scene_registry" ]]; then
+  if [[ ! -s "$scene_registry" ]]; then
+    echo "错误：场景登记表不存在或为空：${scene_registry}" >&2
+    exit 1
+  fi
+  scene_registry_overrides=(
+    "env.eval.task_config.task_randomization.scene_registry=${scene_registry}"
+    "env.eval.task_config.task_randomization.scene_registry_required=true"
+  )
 fi
 if [[ ! "$execution_horizon" =~ ^[1-9][0-9]*$ ]] \
   || (( execution_horizon > action_chunk )); then
@@ -94,14 +183,15 @@ for gpu in "${eval_gpus[@]}"; do
   seen_eval_gpus[$gpu]=1
 done
 eval_gpu_count=${#eval_gpus[@]}
-if (( eval_gpu_count > eval_trajectories || eval_trajectories % eval_gpu_count != 0 )); then
-  echo "错误：GPU 数量必须整除 ${eval_trajectories} 条闭环轨迹。" >&2
+eval_env_count=$((eval_gpu_count * envs_per_gpu))
+if (( eval_env_count > eval_trajectories || eval_trajectories % eval_env_count != 0 )); then
+  echo "错误：环境总数 ${eval_env_count}（${eval_gpu_count} 卡 × 每卡 ${envs_per_gpu}）必须整除 ${eval_trajectories} 条闭环轨迹。" >&2
   exit 1
 fi
 eval_gpu_csv=$(IFS=,; printf '%s' "${eval_gpus[*]}")
 eval_logical_last=$((eval_gpu_count - 1))
 eval_logical_range="0-${eval_logical_last}"
-eval_rollout_epoch=$((eval_trajectories / eval_gpu_count))
+eval_rollout_epoch=$((eval_trajectories / eval_env_count))
 python3 - "$minimum_success" <<'PY'
 import sys
 
@@ -270,15 +360,13 @@ for gpu in "${eval_gpus[@]}"; do
   fi
 done
 
-if git -C "$robotwin_root" apply --reverse --check "$vector_action_patch" 2>/dev/null; then
-  echo "RoboTwin 可配置 action_dim 补丁已存在。"
-elif git -C "$robotwin_root" apply --check "$vector_action_patch"; then
-  git -C "$robotwin_root" apply "$vector_action_patch"
-  echo "已应用 RoboTwin 可配置 action_dim 补丁。"
-else
-  echo "错误：RoboTwin 可配置 action_dim 补丁无法安全应用。" >&2
-  exit 1
-fi
+# Assembled from the pinned upstream instead of patched into it.
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin \
+  --source "$upstream_root" \
+  --runtime "$robotwin_root"
+grep -q 'action_dim' "$robotwin_root/robotwin/envs/vector_env.py" \
+  || { echo "错误：装配出的运行树缺少所需改动。" >&2; exit 1; }
 
 install -m 0644 "$env_source" "$env_target"
 install -m 0644 "$eval_source" "$eval_target"
@@ -306,7 +394,8 @@ resolved="${state_root}/resolved-config.yaml"
     '~cluster.component_placement' \
     "+cluster.component_placement={env:${eval_logical_range},rollout:${eval_logical_range}}" \
     "env.eval.rollout_epoch=${eval_rollout_epoch}" \
-    "env.eval.total_num_envs=${eval_gpu_count}" \
+    "env.eval.total_num_envs=${eval_env_count}" \
+    ${scene_registry_overrides[@]+"${scene_registry_overrides[@]}"} \
     "env.eval.max_steps_per_rollout_epoch=${max_episode_steps}" \
     "env.eval.max_episode_steps=${max_episode_steps}" \
     "env.eval.task_config.step_lim=${max_episode_steps}" \
@@ -320,7 +409,7 @@ resolved="${state_root}/resolved-config.yaml"
 grep -q "^    env: ${eval_logical_range}$" "$resolved"
 grep -q "^    rollout: ${eval_logical_range}$" "$resolved"
 grep -q "^    rollout_epoch: ${eval_rollout_epoch}$" "$resolved"
-grep -q "^    total_num_envs: ${eval_gpu_count}$" "$resolved"
+grep -q "^    total_num_envs: ${eval_env_count}$" "$resolved"
 grep -q "^      task_name: ${task_name}$" "$resolved"
 grep -q "^    max_episode_steps: ${max_episode_steps}$" "$resolved"
 grep -q "^    max_steps_per_rollout_epoch: ${max_episode_steps}$" "$resolved"
@@ -355,7 +444,8 @@ set +e
       '~cluster.component_placement' \
       "+cluster.component_placement={env:${eval_logical_range},rollout:${eval_logical_range}}" \
       "env.eval.rollout_epoch=${eval_rollout_epoch}" \
-      "env.eval.total_num_envs=${eval_gpu_count}" \
+      "env.eval.total_num_envs=${eval_env_count}" \
+      ${scene_registry_overrides[@]+"${scene_registry_overrides[@]}"} \
       "env.eval.max_steps_per_rollout_epoch=${max_episode_steps}" \
       "env.eval.max_episode_steps=${max_episode_steps}" \
       "env.eval.task_config.step_lim=${max_episode_steps}" \
@@ -393,7 +483,9 @@ python3 - "$run_log" "$evaluation_root" "$video_count" "$minimum_success" \
   "$required_initial_gripper" "$action_chunk" "$execution_horizon" \
   "$robot_platform" "$terminal_insertion_assist_m" \
   "$terminal_target_assist" "$max_episode_steps" \
-  "$terminal_target_assist_trigger" <<'PY'
+  "$terminal_target_assist_trigger" "$envs_per_gpu" "$eval_env_count" \
+  "$eval_rollout_epoch" "$budget_is_scoring" "$minimum_episode_steps" \
+  "$scene_registry" <<'PY'
 import json
 from pathlib import Path
 import re
@@ -420,9 +512,15 @@ if trajectories != expected_trajectories:
     )
 if video_count < trajectories:
     raise SystemExit(f"expected at least {trajectories} videos, got {video_count}")
-passed = success >= minimum_success
+scoring = bool(int(sys.argv[23]))
+# A probe run is not a verdict on the policy, so it neither passes nor fails the
+# gate; recording it as "passed" would put an unearned green mark in the state.
+passed = success >= minimum_success if scoring else None
 summary = {
-    "status": "passed" if passed else "below_threshold",
+    "status": (
+        ("passed" if passed else "below_threshold") if scoring
+        else "throughput_probe_not_scored"
+    ),
     "task": sys.argv[6],
     "scene_profile": sys.argv[7] or None,
     "unnorm_key": sys.argv[8],
@@ -432,6 +530,18 @@ summary = {
     "video_count": video_count,
     "gpu_count": int(sys.argv[9]),
     "physical_gpus": [int(value) for value in sys.argv[10].split(",")],
+    # Throughput shape, so a run's wall clock can be read against its own
+    # parallelism rather than guessed from the GPU list.
+    "envs_per_gpu": int(sys.argv[20]),
+    "total_num_envs": int(sys.argv[21]),
+    "rollout_epoch": int(sys.argv[22]),
+    # False when the action budget was deliberately below what the task needs,
+    # so the success rate in this file measures throughput, not the policy.
+    "scoring": scoring,
+    "minimum_episode_steps": int(sys.argv[24]),
+    # Which scenes were evaluated: a registry path means the recorded scenes,
+    # null means freshly sampled ones.
+    "scene_registry": sys.argv[25] or None,
     "initial_gripper_opening": (
         float(sys.argv[12]) if sys.argv[12] else None
     ),
@@ -447,7 +557,7 @@ summary = {
 }
 summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(summary, indent=2))
-raise SystemExit(0 if passed else 2)
+raise SystemExit(0 if (passed or not scoring) else 2)
 PY
 metric_status=$?
 set -e

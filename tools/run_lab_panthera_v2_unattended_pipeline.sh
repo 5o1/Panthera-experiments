@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-v2-schema10-unattended-state"
+state_root="${workspace}/state/panthera-v2-schema10-unattended-state"
 mkdir -p "$state_root"
 exec 9>"${state_root}/pipeline.lock"
 flock -n 9 || { echo "错误：schema 10 无人值守流水线已在运行。" >&2; exit 1; }
@@ -71,32 +71,32 @@ wait_for_gpus() {
   done
 }
 
-[[ -f "${workspace}/.panthera-v2-single-grasp-formal-state/dataset.ok" ]] || {
+[[ -f "${workspace}/state/panthera-v2-single-grasp-formal-state/dataset.ok" ]] || {
   echo "错误：正式数据集门禁不存在。" >&2
   exit 1
 }
-[[ -s "${workspace}/.panthera-v2-single-grasp-formal-state/human-review-approval.json" ]] || {
+[[ -s "${workspace}/state/panthera-v2-single-grasp-formal-state/human-review-approval.json" ]] || {
   echo "错误：缺少人工审阅批准记录。" >&2
   exit 1
 }
 
-run_stage media_audit bash "${workspace}/run_lab_panthera_v2_media_audit.sh"
-run_stage rlds_4_0_0 bash "${workspace}/run_lab_panthera_v2_sft_rlds.sh"
-run_stage eval_config bash "${workspace}/run_lab_panthera_v2_eval_config_smoke.sh"
+run_stage media_audit bash "${workspace}/bin/run_lab_panthera_v2_media_audit.sh"
+run_stage rlds_4_0_0 bash "${workspace}/bin/run_lab_panthera_v2_sft_rlds.sh"
+run_stage eval_config bash "${workspace}/bin/run_lab_panthera_v2_eval_config_smoke.sh"
 wait_for_gpus
-run_stage optimizer_smoke bash "${workspace}/run_lab_openvla_panthera_v2_sft_step_smoke.sh"
+run_stage optimizer_smoke bash "${workspace}/bin/run_lab_openvla_panthera_v2_sft_step_smoke.sh"
 wait_for_gpus
-run_stage sft_10k_gpu123 bash "${workspace}/run_lab_openvla_panthera_v2_sft_10k.sh"
+run_stage sft_10k_gpu123 bash "${workspace}/bin/run_lab_openvla_panthera_v2_sft_10k.sh"
 
 current_stage=dev18_gpu123
 printf '%s\n' "$current_stage" >"${state_root}/current-stage.txt"
 wait_for_gpus
 set +e
-bash "${workspace}/run_lab_panthera_v2_policy_eval.sh" dev
+bash "${workspace}/bin/run_lab_panthera_v2_policy_eval.sh" dev
 dev_status=$?
 set -e
 if (( dev_status != 0 )); then
-  if [[ -s "${workspace}/.panthera-v2-schema10-policy-dev18-state/eval-summary.json" ]]; then
+  if [[ -s "${workspace}/state/panthera-v2-schema10-policy-dev18-state/eval-summary.json" ]]; then
     pipeline_status=stopped_below_dev_threshold
   fi
   exit "$dev_status"
@@ -107,11 +107,11 @@ current_stage=final18_gpu123
 printf '%s\n' "$current_stage" >"${state_root}/current-stage.txt"
 wait_for_gpus
 set +e
-bash "${workspace}/run_lab_panthera_v2_policy_eval.sh" final
+bash "${workspace}/bin/run_lab_panthera_v2_policy_eval.sh" final
 final_status=$?
 set -e
 if (( final_status != 0 )); then
-  if [[ -s "${workspace}/.panthera-v2-schema10-policy-final18-state/eval-summary.json" ]]; then
+  if [[ -s "${workspace}/state/panthera-v2-schema10-policy-final18-state/eval-summary.json" ]]; then
     pipeline_status=stopped_below_final_threshold
   fi
   exit "$final_status"

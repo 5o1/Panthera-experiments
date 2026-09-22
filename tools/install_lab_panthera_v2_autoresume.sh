@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-starter="${workspace}/start_lab_panthera_v2_unattended_pipeline.sh"
+starter="${workspace}/bin/start_lab_panthera_v2_unattended_pipeline.sh"
 marker="# panthera-v2-schema10-autoresume"
 entry="@reboot ${starter} ${marker}"
 command -v crontab >/dev/null 2>&1 || {

@@ -1,0 +1,250 @@
+diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
+--- a/vla-scripts/finetune.py
++++ b/vla-scripts/finetune.py
+@@ -62,5 +62,7 @@ from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
+ from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
+
++from validation_early_stopping import ValidationEarlyStopping
++
+ # Sane Defaults
+ os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+@@ -94,6 +96,9 @@ class FinetuneConfig:
+     use_val_set: bool = False                        # If True, uses validation set and log validation metrics
+     val_freq: int = 10_000                           # (When `use_val_set==True`) Validation set logging frequency in steps
+     val_time_limit: int = 180                        # (When `use_val_set==True`) Time limit for computing validation metrics
++    early_stopping_min_delta: float = 1e-3           # Minimum validation-loss decrease counted as improvement
++    early_stopping_patience: int = 3                 # Stop after this many validations without improvement
++    external_stop_file: Optional[str] = None          # Closed-loop validator success sentinel
+     save_freq: int = 10_000                          # Checkpoint saving frequency in steps
+     save_latest_checkpoint_only: bool = False        # If True, saves only 1 checkpoint, overwriting latest checkpoint
+                                                      #   (If False, saves all checkpoints)
+@@ -665,6 +670,26 @@ def save_training_checkpoint(
+         dist.barrier()
+
+
++def merge_saved_best_checkpoint(cfg, run_dir, distributed_state) -> None:
++    """Merge the already-saved best LoRA adapter exactly once at shutdown."""
++    dist.barrier()
++    if distributed_state.is_main_process:
++        adapter_dir = run_dir / "lora_adapter"
++        if not adapter_dir.is_dir():
++            raise FileNotFoundError(f"Best LoRA adapter was not saved: {adapter_dir}")
++        base_vla = AutoModelForVision2Seq.from_pretrained(
++            cfg.vla_path,
++            torch_dtype=torch.bfloat16,
++            low_cpu_mem_usage=True,
++            trust_remote_code=True,
++        )
++        merged_vla = PeftModel.from_pretrained(base_vla, adapter_dir)
++        merged_vla = merged_vla.merge_and_unload()
++        merged_vla.save_pretrained(run_dir)
++        print(f"Merged best validation checkpoint at: {run_dir}")
++    dist.barrier()
++
++
+ def run_validation(
+     vla,
+     action_head,
+@@ -680,7 +705,7 @@ def run_validation(
+     log_step,
+     distributed_state,
+     val_time_limit,
+-) -> None:
++) -> Dict[str, float]:
+     """
+     Compute validation set metrics for logging.
+
+@@ -735,6 +760,8 @@ def run_validation(
+             if time.time() - val_start_time > val_time_limit:
+                 break
+
++    if not all_val_metrics:
++        raise RuntimeError("Validation produced no batches")
+     # Compute average validation metrics
+     avg_val_metrics = {}
+     for metric_name in all_val_metrics[0].keys():
+@@ -742,12 +769,22 @@ def run_validation(
+         if values:
+             avg_val_metrics[metric_name] = sum(values) / len(values)
+
++    # Early stopping must use one global validation loss on every rank.
++    loss_stats = torch.tensor(
++        [sum(metrics["loss"] for metrics in all_val_metrics), len(all_val_metrics)],
++        dtype=torch.float64,
++        device=torch.device("cuda", device_id),
++    )
++    dist.all_reduce(loss_stats, op=dist.ReduceOp.SUM)
++    avg_val_metrics["loss"] = (loss_stats[0] / loss_stats[1]).item()
++
+     # Add batch count to metrics
+-    avg_val_metrics["val_batches_count"] = val_batches_count
++    avg_val_metrics["val_batches_count"] = int(loss_stats[1].item())
+
+     # Log validation metrics to W&B
+     if distributed_state.is_main_process:
+         log_metrics_to_wandb(avg_val_metrics, "VLA Val", log_step, wandb)
++    return avg_val_metrics
+
+
+ @draccus.wrap()
+@@ -770,6 +807,10 @@ def finetune(cfg: FinetuneConfig) -> None:
+     assert not (cfg.use_l1_regression and cfg.use_diffusion), (
+         "Cannot do both L1 regression and diffusion. Please pick one of them!"
+     )
++    if cfg.use_val_set:
++        assert cfg.val_freq > 0, "val_freq must be positive when validation is enabled"
++        assert cfg.early_stopping_min_delta > 0.0, "early_stopping_min_delta must be positive"
++        assert cfg.early_stopping_patience > 0, "early_stopping_patience must be positive"
+
+     # Trim trailing forward slash ('/') in VLA path if it exists
+     cfg.vla_path = cfg.vla_path.rstrip("/")
+@@ -783,6 +824,12 @@ def finetune(cfg: FinetuneConfig) -> None:
+     run_dir = cfg.run_root_dir / run_id
+     os.makedirs(run_dir, exist_ok=True)
+
++    early_stopping_path = run_dir / "early-stopping.json"
++    early_stopping = None
++    stop_reason = None
++    best_checkpoint_saved = False
++    external_stop_path = Path(cfg.external_stop_file) if cfg.external_stop_file else None
++
+     # GPU setup
+     distributed_state = PartialState()
+     device_id = distributed_state.local_process_index
+@@ -790,5 +837,11 @@ def finetune(cfg: FinetuneConfig) -> None:
+     torch.cuda.empty_cache()
+
++    if cfg.use_val_set and distributed_state.is_main_process:
++        early_stopping = ValidationEarlyStopping(
++            min_delta=cfg.early_stopping_min_delta,
++            patience=cfg.early_stopping_patience,
++        )
++
+     # Initialize wandb logging
+     if distributed_state.is_main_process:
+         wandb.init(entity=cfg.wandb_entity, project=cfg.wandb_project, name=f"ft+{run_id}")
+@@ -1025,6 +1078,6 @@ def finetune(cfg: FinetuneConfig) -> None:
+
+     # Start training
+-    with tqdm.tqdm(total=cfg.max_steps, leave=False) as progress:
++    with tqdm.tqdm(total=None if cfg.use_val_set else cfg.max_steps, leave=False) as progress:
+         vla.train()
+         optimizer.zero_grad()
+         for batch_idx, batch in enumerate(dataloader):
+@@ -1075,7 +1128,9 @@ def finetune(cfg: FinetuneConfig) -> None:
+                 log_metrics_to_wandb(smoothened_metrics, "VLA Train", log_step, wandb)
+
+             # [If applicable] Linearly warm up learning rate from 10% to 100% of original
+-            if cfg.lr_warmup_steps > 0:
++            # Stop writing the warmup LR once warmup is complete. Otherwise this
++            # overwrites every later MultiStepLR decay on the following update.
++            if cfg.lr_warmup_steps > 0 and gradient_step_idx < cfg.lr_warmup_steps:
+                 lr_progress = min((gradient_step_idx + 1) / cfg.lr_warmup_steps, 1.0)  # Cap at 1.0
+                 current_lr = original_lr * (0.1 + 0.9 * lr_progress)
+                 for param_group in optimizer.param_groups:
+@@ -1116,7 +1171,7 @@ def finetune(cfg: FinetuneConfig) -> None:
+
+             # Test model on validation set
+             if cfg.use_val_set and log_step > 0 and log_step % cfg.val_freq == 0:
+-                run_validation(
++                avg_val_metrics = run_validation(
+                     vla=vla,
+                     action_head=action_head,
+                     noisy_action_projector=noisy_action_projector if cfg.use_diffusion else None,
+@@ -1131,13 +1186,91 @@ def finetune(cfg: FinetuneConfig) -> None:
+                     distributed_state=distributed_state,
+                     val_time_limit=cfg.val_time_limit,
+                 )
++                decision_flags = torch.zeros(
++                    3, dtype=torch.int64, device=torch.device("cuda", device_id)
++                )
++                if distributed_state.is_main_process:
++                    decision = early_stopping.update(
++                        step=log_step,
++                        loss=avg_val_metrics["loss"],
++                    )
++                    decision_flags[0] = int(decision.improved)
++                    decision_flags[1] = int(decision.should_stop)
++                    decision_flags[2] = int(
++                        external_stop_path is not None and external_stop_path.is_file()
++                    )
++                    early_stopping.write_json(early_stopping_path)
++                    print(
++                        "Validation early stopping: "
++                        f"step={decision.step}, loss={decision.loss:.8f}, "
++                        f"improvement={decision.improvement}, "
++                        f"bad_validations={decision.bad_validation_count}/"
++                        f"{cfg.early_stopping_patience}, improved={decision.improved}"
++                    )
++                dist.broadcast(decision_flags, src=0)
++
++                # A normal run keeps only significant loss improvements.  An
++                # external closed-loop validator needs every periodic candidate;
++                # it chooses by task success rather than by validation loss.
++                if bool(decision_flags[0].item()) or external_stop_path is not None:
++                    merge_setting = cfg.merge_lora_during_training
++                    cfg.merge_lora_during_training = False
++                    save_training_checkpoint(
++                        cfg=cfg,
++                        run_dir=run_dir,
++                        log_step=log_step,
++                        vla=vla,
++                        processor=processor,
++                        proprio_projector=proprio_projector if cfg.use_proprio else None,
++                        noisy_action_projector=noisy_action_projector if cfg.use_diffusion else None,
++                        action_head=action_head if (cfg.use_l1_regression or cfg.use_diffusion) else None,
++                        train_dataset=train_dataset,
++                        distributed_state=distributed_state,
++                    )
++                    cfg.merge_lora_during_training = merge_setting
++                    best_checkpoint_saved = True
++
+                 # Set model back to training mode after validation
+                 vla.train()
++                if bool(decision_flags[2].item()):
++                    stop_reason = "external_success"
++                    if distributed_state.is_main_process:
++                        early_stopping.write_json(
++                            early_stopping_path,
++                            stop_reason=stop_reason,
++                        )
++                        print(f"External success sentinel found: {external_stop_path}")
++                    break
++                if external_stop_path is None and bool(decision_flags[1].item()):
++                    stop_reason = "early_stopping"
++                    if distributed_state.is_main_process:
++                        early_stopping.write_json(
++                            early_stopping_path,
++                            stop_reason=stop_reason,
++                        )
++                        print(
++                            "Early stopping patience exhausted; "
++                            f"best step={early_stopping.best_step}, "
++                            f"best validation loss={early_stopping.best_loss:.8f}"
++                        )
++                    break
+
+-            # Stop training when max_steps is reached
+-            if log_step == cfg.max_steps:
+-                print(f"Max step {cfg.max_steps} reached! Stopping training...")
+-                break
++            # max_steps remains the reproducible compute budget.  Validation
++            # loss may stop a diagnostic run earlier; an external validator
++            # may stop a closed-loop gate earlier.
++            if log_step >= cfg.max_steps:
++                stop_reason = "max_steps"
++                print(f"Max step {cfg.max_steps} reached! Stopping training...")
++                break
++
++    if stop_reason not in {"early_stopping", "external_success", "max_steps"}:
++        raise RuntimeError(f"Training ended without a configured stop signal: {stop_reason!r}")
++    if not best_checkpoint_saved:
++        raise RuntimeError("Training stopped before any best validation checkpoint was saved")
++    if cfg.merge_lora_during_training:
++        merge_saved_best_checkpoint(cfg, run_dir, distributed_state)
++    if distributed_state.is_main_process:
++        early_stopping.write_json(early_stopping_path, stop_reason=stop_reason)
+
+
+ if __name__ == "__main__":

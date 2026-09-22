@@ -4,10 +4,10 @@ set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 source_root="${workspace}/data/place_vertical_cylinder_in_groove/panthera_phone_vertical_sft_v1"
-data_root="${workspace}/rlds_phone_vertical_sft_v1"
-adapter_root="${workspace}/panthera-openvla-adapter"
-state_root="${workspace}/.panthera-phone-sft-rlds-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+data_root="${workspace}/datasets/rlds/rlds_phone_vertical_sft_v1"
+adapter_root="${workspace}/packages/panthera_vla"
+state_root="${workspace}/state/panthera-phone-sft-rlds-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 summary_path="${state_root}/rlds-summary.json"
 dataset_name="panthera_phone_vertical_cylinder"
 dataset_version_root="${data_root}/${dataset_name}/3.0.0"
@@ -28,7 +28,7 @@ for required in "$activation_script" "${adapter_root}/panthera_rlds.py"; do
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-phone-sft-dataset-state/dataset.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-phone-sft-dataset-state/dataset.ok" ]]; then
   echo "错误：phone-SRT 对齐版 128 集数据尚未通过验收。" >&2
   exit 1
 fi

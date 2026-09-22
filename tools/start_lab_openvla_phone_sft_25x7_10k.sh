@@ -3,7 +3,7 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-state_root="${workspace}/.panthera-phone-openvla-sft-25x7-10k-state"
+state_root="${workspace}/state/panthera-phone-openvla-sft-25x7-10k-state"
 launcher_log="${state_root}/launcher.log"
 
 if pgrep -u "$(id -u)" -x raylet >/dev/null 2>&1; then
@@ -27,7 +27,7 @@ for gpu in 1 2 3; do
 done
 
 mkdir -p "$state_root"
-nohup bash "${workspace}/run_lab_openvla_phone_sft_25x7_10k.sh" \
+nohup bash "${workspace}/bin/run_lab_openvla_phone_sft_25x7_10k.sh" \
   >"$launcher_log" 2>&1 </dev/null &
 launcher_pid=$!
 printf '%s\n' "$launcher_pid" >"${state_root}/launcher-pid.txt"

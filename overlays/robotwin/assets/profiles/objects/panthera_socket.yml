@@ -1,0 +1,9 @@
+# The socket the cylinder is inserted into.
+schema_version: 1
+name: panthera_socket
+geometry:
+  inner_half_width_m: 0.034
+  floor_top_z_m: 0.80
+  top_z_m: 0.84
+appearance:
+  base_color: [0.98, 0.78, 0.02, 1.0]

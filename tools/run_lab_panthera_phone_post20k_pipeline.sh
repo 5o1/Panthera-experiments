@@ -3,11 +3,11 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-train_state="${workspace}/.panthera-phone-openvla-sft-20k-state"
-diagnostic_state="${workspace}/.panthera-phone-policy-eval-diagnostic-state"
-formal_state="${workspace}/.panthera-phone-policy-eval-state"
+train_state="${workspace}/state/panthera-phone-openvla-sft-20k-state"
+diagnostic_state="${workspace}/state/panthera-phone-policy-eval-diagnostic-state"
+formal_state="${workspace}/state/panthera-phone-policy-eval-state"
 archive_root="${workspace}/reports/panthera-phone-vertical-sft-v3/post20k"
-pipeline_state="${workspace}/.panthera-phone-post20k-pipeline-state"
+pipeline_state="${workspace}/state/panthera-phone-post20k-pipeline-state"
 poll_seconds="${PANTHERA_PIPELINE_POLL_SECONDS:-30}"
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -81,7 +81,7 @@ PANTHERA_POLICY_MODEL="$model_root" \
 PANTHERA_EVAL_TRAIN_MARKER="${train_state}/train.ok" \
 PANTHERA_EVAL_TRAIN_STATE="$train_state" \
 PANTHERA_EVAL_MIN_SUCCESS=1.0 \
-bash "${workspace}/run_lab_panthera_phone_policy_eval_diagnostic.sh"
+bash "${workspace}/bin/run_lab_panthera_phone_policy_eval_diagnostic.sh"
 diagnostic_status=$?
 set -e
 
@@ -114,7 +114,7 @@ PANTHERA_EVAL_GPUS=1,2 \
 PANTHERA_EVAL_TRAJECTORIES=16 \
 PANTHERA_EVAL_MIN_SUCCESS=0.75 \
 PANTHERA_EVAL_TRACE_DIR="${formal_state}/trajectory-traces" \
-bash "${workspace}/run_lab_panthera_phone_policy_eval.sh"
+bash "${workspace}/bin/run_lab_panthera_phone_policy_eval.sh"
 formal_status=$?
 set -e
 

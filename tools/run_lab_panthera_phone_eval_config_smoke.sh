@@ -3,11 +3,11 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${workspace}/RLinf"
-overlay_root="${workspace}/panthera-rlinf-overlay"
-state_root="${workspace}/.panthera-phone-eval-config-state"
-activation_script="${workspace}/activate_lab_vla.sh"
-scene_runner="${workspace}/bootstrap_lab_panthera_phone_scene.sh"
+rlinf_root="${workspace}/runtime/rlinf"
+overlay_root="${workspace}/overlays/rlinf"
+state_root="${workspace}/state/panthera-phone-eval-config-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
+scene_runner="${workspace}/bin/bootstrap_lab_panthera_phone_scene.sh"
 env_source="${overlay_root}/config/env/robotwin_place_vertical_cylinder_in_groove.yaml"
 eval_source="${overlay_root}/evaluations/robotwin_panthera_phone_vertical_openvlaoft_eval.yaml"
 seed_source="${overlay_root}/seeds/panthera_phone_vertical_eval_seeds.json"

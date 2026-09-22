@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 vla_root="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${vla_root}/RLinf"
-robotwin_root="${vla_root}/RoboTwin"
+rlinf_root="${vla_root}/runtime/rlinf"
+robotwin_root="${vla_root}/runtime/robotwin"
 conda_root="${PANTHERA_CONDA_ROOT:-/data/lyy/tools/miniforge3}"
 
 if [[ ! -x "${conda_root}/bin/conda" ]]; then

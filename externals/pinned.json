@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "note": "Upstream checkouts are read-only and must stay git-clean. The runtime tree is generated from them by pipelines/assemble_runtime.py; nothing of ours is written into them.",
+  "upstreams": {
+    "robotwin": {
+      "url": "https://github.com/RoboTwin-Platform/RoboTwin.git",
+      "branch": "main",
+      "commit": "6dde57155eafa3e4ebf6ad1f93a7cf7d5d41a755",
+      "directory": "RoboTwin",
+      "approximate_size": "16G",
+      "recorded_in_datasets_as": "robotwin_source_commit"
+    },
+    "rlinf": {
+      "url": "https://github.com/RLinf/RLinf.git",
+      "branch": "main",
+      "commit": "a3816b596478dcd8a5c69a6ec1468c9519f77b5b",
+      "directory": "RLinf",
+      "approximate_size": "12G",
+      "note": "OpenVLA-OFT and prismatic are installed into this checkout's .venv as site-packages, not checked out separately; the patches under overlays/openvla/ target them there."
+    }
+  },
+  "robot_model": {
+    "note": "The Panthera embodiment is generated from the official ROS 2 model, not vendored. overlays/robotwin/assets/embodiments/panthera_phone/provenance.json records the input hashes; packages/panthera_sim/build_panthera_embodiment.py rebuilds the meshes deterministically.",
+    "recorded_in_datasets_as": "robot_source_commit"
+  }
+}

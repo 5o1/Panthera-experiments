@@ -11,6 +11,6 @@ export PANTHERA_ROBOT_PLATFORM=PANTHERA
 export PANTHERA_SFT_GPU=1
 export PANTHERA_SFT_SMOKE_RUN_ROOT="${workspace}/runs/panthera-phone-openvla-sft-25x7-smoke"
 export PANTHERA_SFT_SMOKE_RUN_ID=panthera-phone-vertical-sft-25x7-step-smoke
-export PANTHERA_SFT_SMOKE_STATE_ROOT="${workspace}/.panthera-phone-openvla-sft-25x7-smoke-state"
+export PANTHERA_SFT_SMOKE_STATE_ROOT="${workspace}/state/panthera-phone-openvla-sft-25x7-smoke-state"
 
-exec bash "${workspace}/run_lab_openvla_phone_sft_step_smoke.sh"
+exec bash "${workspace}/bin/run_lab_openvla_phone_sft_step_smoke.sh"

@@ -3,14 +3,20 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-replay_script="${overlay_root}/replay_panthera_dataset.py"
-state_root="${workspace}/.panthera-single-sft-dataset-state"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+overlay_root="${workspace}/overlays/robotwin"
+replay_script="${workspace}/archive/superseded/replay_panthera_dataset.py"
+oracle_runner="${workspace}/packages/panthera_sim/diagnostics/run_oracle_smoke.py"
+state_root="${workspace}/state/panthera-single-sft-dataset-state"
 task_name="place_cylinder_in_groove"
 task_config="panthera_single_cylinder_sft_v1"
 dataset_root="${workspace}/data/${task_name}/${task_config}"
-activation_script="${workspace}/activate_lab_vla.sh"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 expected_episodes=128
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -27,7 +33,7 @@ for required in \
   "$activation_script" \
   "${overlay_root}/envs/${task_name}.py" \
   "$replay_script" \
-  "${overlay_root}/run_oracle_smoke.py" \
+  "$oracle_runner" \
   "${overlay_root}/description/task_instruction/${task_name}.json" \
   "${overlay_root}/task_config/${task_config}.yml"; do
   if [[ ! -s "$required" ]]; then
@@ -36,8 +42,8 @@ for required in \
   fi
 done
 for marker in \
-  "${workspace}/.panthera-embodiment-state/verified.ok" \
-  "${workspace}/.panthera-physical-replay-probe-state/probe.ok"; do
+  "${workspace}/state/panthera-embodiment-state/verified.ok" \
+  "${workspace}/state/panthera-physical-replay-probe-state/probe.ok"; do
   if [[ ! -f "$marker" ]]; then
     echo "错误：缺少前置验收标记：${marker}" >&2
     exit 1
@@ -67,14 +73,6 @@ if [[ -e "$dataset_root" ]]; then
   fi
 fi
 
-install -m 0644 "${overlay_root}/envs/${task_name}.py" "${robotwin_root}/envs/${task_name}.py"
-install -m 0644 \
-  "${overlay_root}/description/task_instruction/${task_name}.json" \
-  "${robotwin_root}/description/task_instruction/${task_name}.json"
-install -m 0644 \
-  "${overlay_root}/task_config/${task_config}.yml" \
-  "${robotwin_root}/task_config/${task_config}.yml"
-
 # shellcheck disable=SC1090
 source "$activation_script"
 python -m py_compile "${robotwin_root}/envs/${task_name}.py"
@@ -85,7 +83,7 @@ preflight_root="${state_root}/planning-preflight"
 if [[ ! -f "${state_root}/planning-preflight.ok" ]]; then
   PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=60s \
     "${PANTHERA_SFT_PREFLIGHT_TIMEOUT:-30m}" \
-    python "${overlay_root}/run_oracle_smoke.py" \
+    python "$oracle_runner" \
       --robotwin-root "$robotwin_root" \
       --output-root "$preflight_root" \
       --task-config "${task_config}.yml" \
@@ -102,7 +100,7 @@ if [[ "$reuse_existing" == false ]]; then
     cd "$robotwin_root"
     PYTHONUNBUFFERED=1 timeout --signal=INT --kill-after=90s \
       "${PANTHERA_SFT_DATASET_TIMEOUT:-3h}" \
-      python script/collect_data.py "$task_name" "$task_config"
+      python scripts/collect_data.py "$task_name" "$task_config"
   ) 2>&1 | tee "$run_log"
   dataset_status=${PIPESTATUS[0]}
   set -e

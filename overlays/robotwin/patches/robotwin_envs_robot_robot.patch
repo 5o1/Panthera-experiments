@@ -1,0 +1,90 @@
+# 针对上游 6dde571 重做（原基线 0008ae6，相隔 223 个提交）
+# 每个上游文件一个 patch
+
+diff --git a/envs/robot/robot.py b/envs/robot/robot.py
+index 9dfc08f..95cd448 100644
+--- a/envs/robot/robot.py
++++ b/envs/robot/robot.py
+@@ -49,6 +49,7 @@ class Robot:
+         self.left_planner_type = left_embodiment_args.get("planner", "mplib_RRT")
+         self.left_move_group = left_embodiment_args["move_group"][0]
+         self.left_ee_name = left_embodiment_args["ee_joints"][0]
++        self.left_ee_pose_from_child_link = left_embodiment_args.get("ee_pose_from_child_link", False)
+         self.left_arm_joints_name = left_embodiment_args["arm_joints_name"][0]
+         self.left_gripper_name = left_embodiment_args["gripper_name"][0]
+         self.left_gripper_bias = left_embodiment_args["gripper_bias"]
+@@ -76,6 +77,7 @@ class Robot:
+         self.right_planner_type = right_embodiment_args.get("planner", "mplib_RRT")
+         self.right_move_group = right_embodiment_args["move_group"][1]
+         self.right_ee_name = right_embodiment_args["ee_joints"][1]
++        self.right_ee_pose_from_child_link = right_embodiment_args.get("ee_pose_from_child_link", False)
+         self.right_arm_joints_name = right_embodiment_args["arm_joints_name"][1]
+         self.right_gripper_name = right_embodiment_args["gripper_name"][1]
+         self.right_gripper_bias = right_embodiment_args["gripper_bias"]
+@@ -255,6 +257,29 @@ class Robot:
+         print("right ee: ", self.right_ee.get_name())
+
+     def set_planner(self, scene=None):
++        # Upstream dropped the mplib branch from this method between 0008ae6
++        # and 6dde571 and now always builds a CuroboPlanner.  The capability
++        # is still there -- MplibPlanner and the scene-backed
++        # SapienPlanningWorld both remain in planner.py -- only the dispatch
++        # went away.  Restoring it keeps an embodiment that declares
++        # ``planner: mplib_*`` on the planner its results were measured with;
++        # switching to curobo would be a separate decision that invalidates
++        # the expert-replay baseline.
++        planner_type = str(getattr(self, "left_planner_type", "curobo"))
++        if planner_type.startswith("mplib"):
++            self.communication_flag = False
++            for side in ("left", "right"):
++                entity = getattr(self, f"{side}_entity")
++                setattr(self, f"{side}_planner", MplibPlanner(
++                    getattr(self, f"{side}_urdf_path"),
++                    getattr(self, f"{side}_srdf_path"),
++                    getattr(self, f"{side}_move_group"),
++                    getattr(self, f"{side}_entity_origion_pose"),
++                    entity,
++                    planner_type,
++                    scene,
++                ))
++            return
+         abs_left_curobo_yml_path = os.path.join(CONFIGS.ROOT_PATH, self.left_curobo_yml_path)
+         abs_right_curobo_yml_path = os.path.join(CONFIGS.ROOT_PATH, self.right_curobo_yml_path)
+
+@@ -568,7 +593,9 @@ class Robot:
+         return self._trans_endpose(arm_tag="right", is_endpose=True)
+
+     def get_left_orig_endpose(self):
+-        pose = self.left_ee.global_pose
++        pose = (self.left_ee.get_child_link().get_entity_pose()
++                if self.left_ee_pose_from_child_link
++                else self.left_ee.global_pose)
+         global_trans_matrix = self.left_global_trans_matrix
+         pose.p = pose.p - self.left_entity_origion_pose.p
+         pose.p = t3d.quaternions.quat2mat(self.left_entity_origion_pose.q).T @ pose.p
+@@ -577,7 +604,9 @@ class Robot:
+             @ global_trans_matrix).tolist())
+
+     def get_right_orig_endpose(self):
+-        pose = self.right_ee.global_pose
++        pose = (self.right_ee.get_child_link().get_entity_pose()
++                if self.right_ee_pose_from_child_link
++                else self.right_ee.global_pose)
+         global_trans_matrix = self.right_global_trans_matrix
+         pose.p = pose.p - self.right_entity_origion_pose.p
+         pose.p = t3d.quaternions.quat2mat(self.right_entity_origion_pose.q).T @ pose.p
+@@ -592,7 +621,13 @@ class Robot:
+         gripper_bias = (self.left_gripper_bias if arm_tag == "left" else self.right_gripper_bias)
+         global_trans_matrix = (self.left_global_trans_matrix if arm_tag == "left" else self.right_global_trans_matrix)
+         delta_matrix = (self.left_delta_matrix if arm_tag == "left" else self.right_delta_matrix)
+-        ee_pose = (self.left_ee.global_pose if arm_tag == "left" else self.right_ee.global_pose)
++        if arm_tag == "left":
++            ee = self.left_ee
++            use_child_link = self.left_ee_pose_from_child_link
++        else:
++            ee = self.right_ee
++            use_child_link = self.right_ee_pose_from_child_link
++        ee_pose = ee.get_child_link().get_entity_pose() if use_child_link else ee.global_pose
+         endpose_arr = np.eye(4)
+         endpose_arr[:3, :3] = (t3d.quaternions.quat2mat(ee_pose.q) @ global_trans_matrix @ delta_matrix)
+         dis = gripper_bias

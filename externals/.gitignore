@@ -1,0 +1,4 @@
+# The checkouts themselves are fetched by setup.sh, not tracked here: they are
+# ~28 GB and their identity is pinned by pinned.json.
+RoboTwin/
+RLinf/

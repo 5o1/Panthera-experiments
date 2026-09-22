@@ -3,11 +3,11 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-upstream_state="${workspace}/.panthera-phone-sft-pipeline-state"
-state_root="${workspace}/.panthera-phone-policy-pipeline-state"
-media_runner="${workspace}/run_lab_panthera_phone_media_audit.sh"
-train_runner="${workspace}/run_lab_openvla_phone_sft.sh"
-eval_runner="${workspace}/run_lab_panthera_phone_policy_eval.sh"
+upstream_state="${workspace}/state/panthera-phone-sft-pipeline-state"
+state_root="${workspace}/state/panthera-phone-policy-pipeline-state"
+media_runner="${workspace}/bin/run_lab_panthera_phone_media_audit.sh"
+train_runner="${workspace}/bin/run_lab_openvla_phone_sft.sh"
+eval_runner="${workspace}/bin/run_lab_panthera_phone_policy_eval.sh"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2

@@ -1,0 +1,79 @@
+diff --git a/rlinf/workers/rollout/hf/huggingface_worker.py b/rlinf/workers/rollout/hf/huggingface_worker.py
+--- a/rlinf/workers/rollout/hf/huggingface_worker.py
++++ b/rlinf/workers/rollout/hf/huggingface_worker.py
+@@ -14,6 +14,7 @@
+ import asyncio
+ import copy
+ import gc
++import os
+ import time
+ from typing import Any, Callable, Literal, Optional
+
+@@ -107,10 +108,23 @@ class HuggingFaceWorker(Worker):
+             else 0
+         )
+         self.n_eval_chunk_steps = 0
+         if self.enable_eval:
++            eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{eval_execution_horizon}"
++                )
+             self.n_eval_chunk_steps = (
+-                cfg.env.eval.max_steps_per_rollout_epoch
+-                // self.model_cfg.num_action_chunks
+-            )
++                cfg.env.eval.max_steps_per_rollout_epoch
++                + eval_execution_horizon
++                - 1
++            ) // eval_execution_horizon
+         self.collect_prev_infos = self.cfg.rollout.get("collect_prev_infos", True)
+         self.collect_final_values = self.cfg.rollout.get("collect_final_values", True)
+         self.version = 0
+diff --git a/rlinf/workers/rollout/sglang/sglang_embodied_worker.py b/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
+--- a/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
++++ b/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
+@@ -26,7 +26,8 @@ registered for ``rollout.model.model_type``, and is driven by
+ host its own HTTP server (the agent path uses
+ :class:`SGLangAgentWorkerWithHTTPServer`).
+ """
+
++import os
+ from typing import Any, Literal, Optional
+
+ import torch
+@@ -75,10 +76,24 @@ class SGLangEmbodiedWorker(Worker):
+             else total_eval
+         )
+         self.eval_rollout_epoch = int(eval_env_cfg.rollout_epoch) if eval_env_cfg else 1
+         if eval_env_cfg is not None:
+-            self.n_eval_chunk_steps = int(
+-                eval_env_cfg.max_steps_per_rollout_epoch
+-            ) // int(self.model_cfg.num_action_chunks)
++            eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{eval_execution_horizon}"
++                )
++            self.n_eval_chunk_steps = (
++                int(eval_env_cfg.max_steps_per_rollout_epoch)
++                + eval_execution_horizon
++                - 1
++            ) // eval_execution_horizon
+         else:
+             self.n_eval_chunk_steps = 0
+

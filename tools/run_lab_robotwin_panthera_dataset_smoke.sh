@@ -3,13 +3,17 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-robotwin_root="${workspace}/RoboTwin"
-overlay_root="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.panthera-dataset-smoke-state"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+overlay_root="${workspace}/overlays/robotwin"
+state_root="${workspace}/state/panthera-dataset-smoke-state"
 dataset_root="${workspace}/data/place_cylinder_in_groove/panthera_cylinder_dataset_smoke"
-activation_script="${workspace}/activate_lab_vla.sh"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 task_config="panthera_cylinder_dataset_smoke"
-expected_robotwin_commit="0008ae6800df9f75fc8de7098bacb01735fd8fd2"
 
 if [[ $(id -u) -eq 0 ]]; then
   echo "错误：本脚本必须使用普通用户运行，禁止使用 root。" >&2
@@ -21,16 +25,12 @@ for command_name in flock git timeout; do
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-cylinder-oracle-state/oracle.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-cylinder-oracle-state/oracle.ok" ]]; then
   echo "错误：双 Panthera oracle 尚未通过四种子验收。" >&2
   exit 1
 fi
 if [[ ! -f "$activation_script" ]]; then
   echo "错误：缺少环境激活脚本：${activation_script}" >&2
-  exit 1
-fi
-if [[ $(git -C "$robotwin_root" rev-parse HEAD) != "$expected_robotwin_commit" ]]; then
-  echo "错误：RoboTwin checkout 不是已固定提交。" >&2
   exit 1
 fi
 
@@ -51,16 +51,6 @@ for relative_path in \
   fi
 done
 
-install -m 0644 \
-  "${overlay_root}/envs/place_cylinder_in_groove.py" \
-  "${robotwin_root}/envs/place_cylinder_in_groove.py"
-install -m 0644 \
-  "${overlay_root}/description/task_instruction/place_cylinder_in_groove.json" \
-  "${robotwin_root}/description/task_instruction/place_cylinder_in_groove.json"
-install -m 0644 \
-  "${overlay_root}/task_config/${task_config}.yml" \
-  "${robotwin_root}/task_config/${task_config}.yml"
-
 # shellcheck disable=SC1090
 source "$activation_script"
 python -m py_compile "${robotwin_root}/envs/place_cylinder_in_groove.py"
@@ -74,7 +64,7 @@ set +e
   cd "$robotwin_root"
   timeout --signal=INT --kill-after=60s \
     "${PANTHERA_DATASET_TIMEOUT:-45m}" \
-    python script/collect_data.py place_cylinder_in_groove "$task_config"
+    python scripts/collect_data.py place_cylinder_in_groove "$task_config"
 ) 2>&1 | tee "$run_log"
 dataset_status=${PIPESTATUS[0]}
 set -e

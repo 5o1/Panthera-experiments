@@ -1,0 +1,98 @@
+# 针对上游 6dde571 重做（原基线 0008ae6，相隔 223 个提交）
+# 每个上游文件一个 patch
+
+diff --git a/envs/_base_task.py b/envs/_base_task.py
+index 3abdf3c..729c271 100644
+--- a/envs/_base_task.py
++++ b/envs/_base_task.py
+@@ -88,6 +88,10 @@ class Base_Task(gym.Env):
+         self.plan_success = True
+         self.step_lim = None
+         self.fix_gripper = False
++        # A deterministic episode-local physics clock.  Sampling on a loop
++        # index restarts at every call site, so frames from different
++        # phases landed on different grids; this counts the whole episode.
++        self.simulation_step_count = 0
+         self.setup_scene()
+
+         self.left_js = None
+@@ -172,7 +176,7 @@ class Base_Task(gym.Env):
+         def check(times):
+             nonlocal self, is_stable, actors_list, actors_pose_list
+             for _ in range(times):
+-                self.scene.step()
++                self._step_scene()
+                 for idx, actor in enumerate(actors_list):
+                     actors_pose_list[idx].append(actor.get_pose())
+
+@@ -186,7 +190,7 @@ class Base_Task(gym.Env):
+
+         is_stable = True
+         for _ in range(2000):
+-            self.scene.step()
++            self._step_scene()
+         for idx, actor in enumerate(actors_list):
+             actors_pose_list.append([actor.get_pose()])
+         check(500)
+@@ -198,6 +202,11 @@ class Base_Task(gym.Env):
+     def check_success(self):
+         pass
+
++    def _step_scene(self):
++        """Advance physics once and retain the episode-local clock."""
++        self.scene.step()
++        self.simulation_step_count += 1
++
+     def setup_scene(self, **kwargs):
+         """
+         Set the scene
+@@ -412,7 +421,7 @@ class Base_Task(gym.Env):
+             **kwags,
+         )
+         self.cameras.load_camera(self.scene)
+-        self.scene.step()  # run a physical step
++        self._step_scene()  # run a physical step
+         self.scene.update_render()  # sync pose from SAPIEN to renderer
+
+     # =========================================================== Sapien ===========================================================
+@@ -941,12 +950,15 @@ class Base_Task(gym.Env):
+                 )
+                 now_right_id += 1
+
+-            self.scene.step()
++            self._step_scene()
+             if self.render_freq and i % self.render_freq == 0:
+                 self._update_render()
+                 self.viewer.render()
+
+-            if save_freq != None and i % save_freq == 0:
++            if (
++                save_freq is not None
++                and self.simulation_step_count % save_freq == 0
++            ):
+                 self._update_render()
+                 self._take_picture()
+             i += 1
+@@ -1534,13 +1546,16 @@ class Base_Task(gym.Env):
+                     right_gripper["per_step"],
+                 )  # TODO
+
+-            self.scene.step()
++            self._step_scene()
+
+             if self.render_freq and control_idx % self.render_freq == 0:
+                 self._update_render()
+                 self.viewer.render()
+
+-            if save_freq != None and control_idx % save_freq == 0:
++            if (
++                save_freq is not None
++                and self.simulation_step_count % save_freq == 0
++            ):
+                 self._update_render()
+                 self._take_picture()
+
+@@ -1727,2 +1742,2 @@ class Base_Task(gym.Env):
+-            self.scene.step()
++            self._step_scene()
+             self._update_render()

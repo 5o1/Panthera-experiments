@@ -3,12 +3,17 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${workspace}/RLinf"
-overlay_root="${workspace}/panthera-rlinf-overlay"
-robotwin_root="${workspace}/RoboTwin"
-robotwin_overlay="${workspace}/panthera-robotwin-overlay"
-state_root="${workspace}/.panthera-v2-schema10-eval-config-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+rlinf_root="${workspace}/runtime/rlinf"
+overlay_root="${workspace}/overlays/rlinf"
+# Upstream is read-only under externals/; this runs against a runtime
+# assembled from it plus the overlay plus the patches.
+upstream_root="${workspace}/externals/RoboTwin"
+robotwin_root="${workspace}/runtime/robotwin"
+python3 "${workspace}/pipelines/assemble_runtime.py" \
+  --upstream robotwin --source "$upstream_root" --runtime "$robotwin_root" >/dev/null
+robotwin_overlay="${workspace}/overlays/robotwin"
+state_root="${workspace}/state/panthera-v2-schema10-eval-config-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 env_source="${overlay_root}/config/env/robotwin_place_randomized_cylinder_in_socket.yaml"
 eval_source="${overlay_root}/evaluations/robotwin_panthera_v2_openvlaoft_eval.yaml"
 seed_source="${overlay_root}/seeds/panthera_v2_schema10_dev_seeds.json"
@@ -26,7 +31,7 @@ for required in "$activation_script" "$env_source" "$eval_source" "$seed_source"
   "${robotwin_overlay}/description/task_instruction/place_randomized_cylinder_in_socket.json"; do
   [[ -s "$required" ]] || { echo "错误：缺少配置前置文件 ${required}。" >&2; exit 1; }
 done
-[[ -f "${workspace}/.panthera-v2-single-grasp-formal-state/dataset.ok" ]] || {
+[[ -f "${workspace}/state/panthera-v2-single-grasp-formal-state/dataset.ok" ]] || {
   echo "错误：正式数据集尚未通过。" >&2
   exit 1
 }

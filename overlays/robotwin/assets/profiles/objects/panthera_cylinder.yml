@@ -1,0 +1,20 @@
+# The cylinder the task picks up. Intrinsic properties only: anything that is a
+# run-time solver setting is declared in panthera_sim.config instead, because it
+# is tuned per run rather than being a property of the object.
+schema_version: 1
+name: panthera_cylinder
+geometry:
+  radius_m: 0.0275
+  half_height_m: 0.06
+physics:
+  mass_kg: 0.03
+  static_friction: 1.2
+  dynamic_friction: 1.0
+  restitution: 0.0
+appearance:
+  # What the renderer draws and, through the recorded frames, what the policy
+  # keys on.  It lived as a literal in two environment modules, so the episode
+  # carried no record of it and a change was invisible to everything
+  # downstream -- which is how a dataset came to show one colour while its
+  # instruction named another.
+  base_color: [0.98, 0.78, 0.02, 1.0]

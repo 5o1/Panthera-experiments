@@ -3,10 +3,10 @@
 set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
-rlinf_root="${workspace}/RLinf"
-overlay_root="${workspace}/panthera-rlinf-overlay"
-state_root="${workspace}/.panthera-single-eval-config-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+rlinf_root="${workspace}/runtime/rlinf"
+overlay_root="${workspace}/overlays/rlinf"
+state_root="${workspace}/state/panthera-single-eval-config-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 env_source="${overlay_root}/config/env/robotwin_place_cylinder_in_groove.yaml"
 eval_source="${overlay_root}/evaluations/robotwin_panthera_cylinder_openvlaoft_eval.yaml"
 seed_source="${overlay_root}/seeds/panthera_cylinder_eval_seeds.json"
@@ -23,7 +23,7 @@ for required in "$activation_script" "$env_source" "$eval_source" "$seed_source"
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-embodiment-state/verified.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-embodiment-state/verified.ok" ]]; then
   echo "错误：Panthera embodiment 尚未通过验收。" >&2
   exit 1
 fi

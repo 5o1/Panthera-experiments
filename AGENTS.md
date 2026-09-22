@@ -27,6 +27,22 @@
     轨迹、连续性验收、Lab 产物和异步落盘任务池设计边界。
 14. [v2 无人值守训练流水线](docs/16_panthera_v2_unattended_training_pipeline_2026-09-16.md)：
     用户审阅批准、长任务阶段、GPU1–3 并行策略、质量门和重启恢复入口。
+15. [v2 扩充数据集流水线](docs/17_panthera_v2_expanded_dataset_pipeline_2026-09-17.md)：
+    固定机位 1280 条正式数据、异步落盘、连续性门禁和早停结论的历史演变。
+16. [闭环评测台缺陷排查](docs/18_eval_harness_defects_2026-09-19.md)：动作预算、场景复现、
+    专家重放基线以及两道 CI 门禁。
+17. [配置与目录架构](docs/19_architecture_plan_2026-09-19.md)：产物自持配置、只读上游、
+    overlay、runtime 装配和当前目录职责。
+18. [评测观测错配](docs/20_eval_observation_mismatch_2026-09-19.md)：固定相机恢复、RGB/BGR
+    契约、旧闭环数字作废及单轨迹过拟合现状。
+19. [RoboTwin 上游迁移](docs/21_upstream_migration_2026-09-20.md)：从 `0008ae6` 迁移到
+    `6dde571`、新版目录兼容和补丁取舍。
+20. [单轨迹过拟合门禁收口](docs/22_single_trajectory_overfit_gate_hardening_2026-09-20.md)：
+    25×7 契约、checkpoint lineage、闭环选模和不可覆盖运行目录。
+21. [OpenPI π0.5 迁移与同口径基线](docs/23_openpi_pi05_migration_baseline_2026-09-21.md)：
+    单相机/7 维适配、LeRobot 转换、统一评测 backend 和公平比较门禁。
+22. [OpenVLA 28 维动力学 proprio 过拟合实验](docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md)：
+    qpos/qvel/qacc/effort 合同、GPU0 smoke、三卡后继训练和验收口径。
 
 ## 当前边界
 
@@ -44,6 +60,12 @@
 - 不得在没有用户明确要求、真机确认和急停准备的情况下启动官方驱动或发布真机命令。
 - 开源项目只提供设计候选、实现证据和失败案例，不构成本项目的硬约束。应按 Panthera
   驱动能力、单目可观测性、测试结果和安全目标独立取舍，任何参考方案都可以弃用。
+- 当前正式仿真数据为固定机位 schema 10 的 1280 条数据。旧随机相机策略评测数字因观测
+  错配作废；专家重放和单轨迹闭环两道门禁仍为红色，不得越级恢复真机实验。
+- 专家状态分布上的验证 L1 已被证明不能预测闭环成功率，不得作为正式训练的选模或停止
+  判据。正式训练使用固定计算预算、周期 checkpoint，并以闭环 rollout 选模。
+- RoboTwin 上游固定为 `main@6dde57155eafa3e4ebf6ad1f93a7cf7d5d41a755`。上游检出必须
+  保持干净；运行树只能由 `pipelines/assemble_runtime.py` 从 pin、overlay 和 patch 生成。
 
 ## 维护规则
 

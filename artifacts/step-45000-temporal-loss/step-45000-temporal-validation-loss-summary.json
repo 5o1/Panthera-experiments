@@ -1,0 +1,103 @@
+{
+  "source": "/data/lyy/panthera-vla/ci/overfit-ep2-24h/overfit-ep2-24h-b6-20260920T140123Z/paired-preview-step-45000/standard-h20/step-45000.json",
+  "frames": 1037,
+  "action_chunk": 25,
+  "expert_gripper_transitions": [
+    {
+      "row": 231,
+      "kind": "close",
+      "before": 0.5110552763819095,
+      "after": 0.49597989949748744
+    },
+    {
+      "row": 801,
+      "kind": "open",
+      "before": 0.4829145728643216,
+      "after": 0.5005025125628141
+    }
+  ],
+  "global": {
+    "normalized_chunk_l1": {
+      "mean": 0.018705729200735852,
+      "max": 0.02982490190761303
+    },
+    "normalized_chunk_joint_l1": {
+      "mean": 0.018565582248957067,
+      "max": 0.029982881789050116
+    },
+    "normalized_chunk_gripper_l1": {
+      "mean": 0.01954661091140857,
+      "max": 0.07966332881932786
+    },
+    "normalized_current_l1": {
+      "mean": 0.01931780896004855,
+      "max": 0.04995071648053516
+    },
+    "normalized_current_joint_l1": {
+      "mean": 0.019816739315599092,
+      "max": 0.056322705211965106
+    },
+    "normalized_current_gripper_l1": {
+      "mean": 0.016324226826745263,
+      "max": 0.09577179409246572
+    }
+  },
+  "transition_windows": {
+    "close_row_231": {
+      "row_start": 207,
+      "row_end": 255,
+      "normalized_chunk_l1": {
+        "mean": 0.016842673203615776,
+        "max": 0.018676798349209076
+      },
+      "normalized_chunk_joint_l1": {
+        "mean": 0.015250379185765486,
+        "max": 0.017295407556428367
+      },
+      "normalized_chunk_gripper_l1": {
+        "mean": 0.026396437310717506,
+        "max": 0.03400025163123665
+      },
+      "normalized_current_l1": {
+        "mean": 0.01724774197991386,
+        "max": 0.02428103573085207
+      },
+      "normalized_current_joint_l1": {
+        "mean": 0.016622630912262504,
+        "max": 0.020467283829407785
+      },
+      "normalized_current_gripper_l1": {
+        "mean": 0.02099840838582199,
+        "max": 0.058593750160792046
+      }
+    },
+    "open_row_801": {
+      "row_start": 777,
+      "row_end": 825,
+      "normalized_chunk_l1": {
+        "mean": 0.016848239676390372,
+        "max": 0.022947595675231188
+      },
+      "normalized_chunk_joint_l1": {
+        "mean": 0.014321968510691606,
+        "max": 0.01625284881355762
+      },
+      "normalized_chunk_gripper_l1": {
+        "mean": 0.03200586667058298,
+        "max": 0.07966332881932786
+      },
+      "normalized_current_l1": {
+        "mean": 0.02042094934122852,
+        "max": 0.028701060970867474
+      },
+      "normalized_current_joint_l1": {
+        "mean": 0.018160363160320207,
+        "max": 0.02077783208309858
+      },
+      "normalized_current_gripper_l1": {
+        "mean": 0.03398446642667837,
+        "max": 0.09577179409246572
+      }
+    }
+  }
+}

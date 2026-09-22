@@ -4,10 +4,10 @@ set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 source_root="${workspace}/data/place_cylinder_in_groove/panthera_cylinder_contract_smoke"
-data_root="${workspace}/rlds"
-adapter_root="${workspace}/panthera-openvla-adapter"
-state_root="${workspace}/.panthera-rlds-smoke-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+data_root="${workspace}/datasets/rlds"
+adapter_root="${workspace}/packages/panthera_vla"
+state_root="${workspace}/state/panthera-rlds-smoke-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 summary_path="${state_root}/rlds-summary.json"
 dataset_version_root="${data_root}/panthera_cylinder/1.0.0"
 
@@ -29,7 +29,7 @@ for required in \
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-contract-smoke-state/contract.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-contract-smoke-state/contract.ok" ]]; then
   echo "错误：统一时钟的 Panthera contract smoke 尚未通过。" >&2
   exit 1
 fi

@@ -4,10 +4,10 @@ set -euo pipefail
 
 workspace="${PANTHERA_VLA_ROOT:-/data/lyy/panthera-vla}"
 source_root="${workspace}/data/place_cylinder_in_groove/panthera_single_cylinder_sft_v1"
-data_root="${workspace}/rlds_single_sft_v1"
-adapter_root="${workspace}/panthera-openvla-adapter"
-state_root="${workspace}/.panthera-single-sft-rlds-state"
-activation_script="${workspace}/activate_lab_vla.sh"
+data_root="${workspace}/datasets/rlds/rlds_single_sft_v1"
+adapter_root="${workspace}/packages/panthera_vla"
+state_root="${workspace}/state/panthera-single-sft-rlds-state"
+activation_script="${workspace}/tools/activate_lab_vla.sh"
 summary_path="${state_root}/rlds-summary.json"
 dataset_version_root="${data_root}/panthera_single_cylinder/2.0.0"
 
@@ -27,7 +27,7 @@ for required in "$activation_script" "${adapter_root}/panthera_rlds.py"; do
     exit 1
   fi
 done
-if [[ ! -f "${workspace}/.panthera-single-sft-dataset-state/dataset.ok" ]]; then
+if [[ ! -f "${workspace}/state/panthera-single-sft-dataset-state/dataset.ok" ]]; then
   echo "错误：单 Panthera 128-episode SFT v1 数据集尚未通过验收。" >&2
   exit 1
 fi
