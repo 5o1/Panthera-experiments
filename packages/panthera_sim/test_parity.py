@@ -35,7 +35,7 @@ def test_action_chunks_pad_tail_like_rlds():
     assert np.array_equal(chunks[1], np.repeat(actions[2][None, :], 3, axis=0))
 
 
-def test_gripper_transitions_are_reported_on_the_new_state_row():
+def test_gripper_midpoint_crossings_are_reported_on_the_new_state_row():
     actions = np.zeros((6, 7), dtype=np.float64)
     actions[:, 6] = [0.9, 0.8, 0.4, 0.3, 0.6, 0.7]
     assert _gripper_transitions(actions) == [

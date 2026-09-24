@@ -2,7 +2,7 @@
 
 Measured on the single-trajectory overfit model, episode 2: the expert holds
 still for 26.9% of its trajectory -- four settling blocks, two of them around
-the gripper closing at step 231 and opening at 801 -- and moves 5.23 mrad per
+the gripper midpoint crossings at steps 231 and 801 -- and moves 5.23 mrad per
 step in between.  The policy held still for 0.0% of its rollout at 13.71 mrad
 per step, so it never reached the state the release is predicted from.
 """

@@ -14,6 +14,7 @@ import sapien
 import transforms3d as t3d
 
 from ._base_task import Base_Task
+from .panthera_release_reward import evaluate_transition
 from .utils import Action, ArmTag, Actor, create_box
 
 
@@ -124,6 +125,14 @@ class place_cylinder_in_groove(Base_Task):
 
     def setup_demo(self, **kwargs):
         """Create one Panthera, the cameras, a cylinder and its target groove."""
+        self.rl_reward_variant = str(
+            kwargs.get("rl_reward_variant", "legacy")
+        ).lower()
+        if self.rl_reward_variant not in {"legacy", "r1", "r2"}:
+            raise ValueError(
+                "rl_reward_variant must be one of legacy, r1 or r2"
+            )
+        self._rl_previous_action = None
         self.episode_seed = int(kwargs.get("seed", 0))
         self.task_randomization = kwargs.get("task_randomization", {}) or {}
         self.domain_randomization = kwargs.get("domain_randomization", {}) or {}
@@ -414,20 +423,330 @@ class place_cylinder_in_groove(Base_Task):
         }
         return observation
 
-    def gen_sparse_reward_data(self, chunk_actions, action_type="qpos"):
-        """Execute a 7-D policy chunk through RoboTwin's existing TOPP path.
+    def _reset_policy_episode_metrics(self) -> None:
+        """Reset privileged diagnostics for one policy-controlled episode.
 
-        A one-item RoboTwin embodiment aliases its legacy left/right handles to
-        the same articulation.  Duplicating the command internally therefore
-        drives one physical simulated robot twice to the same target; the model,
-        dataset and public environment remain strictly seven dimensional.
+        These values are exported only through the environment ``info``
+        channel.  They are deliberately absent from the RGB/proprioception
+        observation and are never read by the reward evaluator.
         """
+        self._rl_metric_grasped_once = False
+        self._rl_metric_target_grasped_once = False
+        self._rl_metric_valid_release_once = False
+        self._rl_metric_invalid_release_once = False
+        self._rl_metric_hard_failure_once = False
+        self._rl_metric_first_target_grasped_action = None
+        self._rl_metric_first_valid_release_action = None
+        self._rl_metric_arm_delta_sum = 0.0
+        self._rl_metric_arm_delta_count = 0
+        self._rl_metric_arm_second_difference_sum = 0.0
+        self._rl_metric_arm_second_difference_max = 0.0
+        self._rl_metric_arm_second_difference_count = 0
+        self._rl_metric_boundary_second_difference_sum = 0.0
+        self._rl_metric_boundary_second_difference_max = 0.0
+        self._rl_metric_boundary_second_difference_count = 0
+        self._rl_metric_gripper_delta_sum = 0.0
+        self._rl_metric_gripper_delta_count = 0
+        self._rl_metric_previous_arm_delta = None
+        self._rl_metric_last_gripper_target = None
+
+    @staticmethod
+    def _policy_effect_is_release_aligned(effect) -> bool:
+        """Return whether the object geometry is inside the release envelope."""
+        return bool(
+            effect.target_xy_error_m <= 0.030
+            and effect.target_height_error_m <= 0.080
+            and effect.target_axis_error_deg <= 10.0
+        )
+
+    def _record_policy_effect(self, previous, current) -> None:
+        """Accumulate physical transition outcomes without shaping policy reward."""
+        action_index = int(self.take_action_cnt)
+        aligned_while_grasped = bool(
+            current.grasped and self._policy_effect_is_release_aligned(current)
+        )
+        self._rl_metric_grasped_once |= bool(current.grasped)
+        self._rl_metric_target_grasped_once |= aligned_while_grasped
+        self._rl_metric_valid_release_once |= bool(current.released_in_valid_volume)
+        self._rl_metric_hard_failure_once |= bool(current.hard_failure)
+        if (
+            aligned_while_grasped
+            and self._rl_metric_first_target_grasped_action is None
+        ):
+            self._rl_metric_first_target_grasped_action = action_index
+        if (
+            current.released_in_valid_volume
+            and self._rl_metric_first_valid_release_action is None
+        ):
+            self._rl_metric_first_valid_release_action = action_index
+        if (
+            previous is not None
+            and previous.grasped
+            and not current.grasped
+            and not current.released_in_valid_volume
+        ):
+            self._rl_metric_invalid_release_once = True
+
+    def _record_policy_action_motion(
+        self,
+        *,
+        target_arm: np.ndarray,
+        previous_arm: np.ndarray,
+        target_gripper: float,
+        previous_gripper: float,
+        is_chunk_start: bool,
+    ) -> None:
+        """Measure target changes and second differences at the 50 Hz contract."""
+        arm_delta = np.asarray(target_arm, dtype=float) - np.asarray(
+            previous_arm, dtype=float
+        )
+        arm_delta_l1 = float(np.mean(np.abs(arm_delta)))
+        self._rl_metric_arm_delta_sum += arm_delta_l1
+        self._rl_metric_arm_delta_count += 1
+        self._rl_metric_gripper_delta_sum += abs(
+            float(target_gripper) - float(previous_gripper)
+        )
+        self._rl_metric_gripper_delta_count += 1
+
+        previous_delta = self._rl_metric_previous_arm_delta
+        if previous_delta is not None:
+            second_difference = float(np.mean(np.abs(arm_delta - previous_delta)))
+            self._rl_metric_arm_second_difference_sum += second_difference
+            self._rl_metric_arm_second_difference_max = max(
+                self._rl_metric_arm_second_difference_max,
+                second_difference,
+            )
+            self._rl_metric_arm_second_difference_count += 1
+            if is_chunk_start:
+                self._rl_metric_boundary_second_difference_sum += second_difference
+                self._rl_metric_boundary_second_difference_max = max(
+                    self._rl_metric_boundary_second_difference_max,
+                    second_difference,
+                )
+                self._rl_metric_boundary_second_difference_count += 1
+        self._rl_metric_previous_arm_delta = arm_delta.copy()
+        self._rl_metric_last_gripper_target = float(target_gripper)
+
+    @staticmethod
+    def _safe_mean(total: float, count: int) -> float:
+        return float(total / count) if count else 0.0
+
+    def _policy_episode_metrics(self, final_effect) -> dict[str, float]:
+        """Return cumulative, scalar episode metrics suitable for RLinf logging."""
+        first_target = self._rl_metric_first_target_grasped_action
+        first_release = self._rl_metric_first_valid_release_action
+        release_delay = 0
+        release_delay_censored = False
+        if first_target is not None:
+            if first_release is None:
+                release_delay = max(0, int(self.take_action_cnt) - first_target)
+                release_delay_censored = True
+            else:
+                release_delay = max(0, first_release - first_target)
+        aligned_grasped_at_end = bool(
+            final_effect.grasped
+            and self._policy_effect_is_release_aligned(final_effect)
+        )
+        return {
+            "panthera_grasped_once": float(self._rl_metric_grasped_once),
+            "panthera_target_grasped_once": float(
+                self._rl_metric_target_grasped_once
+            ),
+            "panthera_valid_release_once": float(
+                self._rl_metric_valid_release_once
+            ),
+            "panthera_invalid_release_once": float(
+                self._rl_metric_invalid_release_once
+            ),
+            "panthera_hard_failure_once": float(
+                self._rl_metric_hard_failure_once
+            ),
+            "panthera_target_still_grasped_at_end": float(
+                aligned_grasped_at_end
+            ),
+            "panthera_valid_release_at_end": float(
+                final_effect.released_in_valid_volume
+            ),
+            "panthera_release_delay_actions": float(release_delay),
+            "panthera_release_delay_censored": float(release_delay_censored),
+            "panthera_arm_delta_l1_mean": self._safe_mean(
+                self._rl_metric_arm_delta_sum,
+                self._rl_metric_arm_delta_count,
+            ),
+            "panthera_arm_second_difference_l1_mean": self._safe_mean(
+                self._rl_metric_arm_second_difference_sum,
+                self._rl_metric_arm_second_difference_count,
+            ),
+            "panthera_arm_second_difference_l1_max": float(
+                self._rl_metric_arm_second_difference_max
+            ),
+            "panthera_chunk_boundary_second_difference_l1_mean": self._safe_mean(
+                self._rl_metric_boundary_second_difference_sum,
+                self._rl_metric_boundary_second_difference_count,
+            ),
+            "panthera_chunk_boundary_second_difference_l1_max": float(
+                self._rl_metric_boundary_second_difference_max
+            ),
+            "panthera_gripper_delta_l1_mean": self._safe_mean(
+                self._rl_metric_gripper_delta_sum,
+                self._rl_metric_gripper_delta_count,
+            ),
+            "panthera_target_xy_error_m": float(final_effect.target_xy_error_m),
+            "panthera_target_height_error_m": float(
+                final_effect.target_height_error_m
+            ),
+            "panthera_target_axis_error_deg": float(
+                final_effect.target_axis_error_deg
+            ),
+        }
+
+    def gen_sparse_reward_data(self, chunk_actions, action_type="qpos"):
+        """Execute one 50 Hz, 7-D policy chunk and return sparse task reward.
+
+        RoboTwin ``6dde571`` removed the legacy base-class
+        ``gen_sparse_reward_data`` API.  Panthera actions are already dense
+        absolute joint targets, so replay them with the same timing contract
+        as :class:`packages.panthera_sim.executor.DenseExecutor`: five 250 Hz
+        physics ticks per policy target and finite-difference velocity
+        feed-forward.  This keeps RL rollout dynamics aligned with the expert
+        replay gate instead of routing each sample through a fresh planner.
+        """
+        if action_type != "qpos":
+            raise ValueError("single-Panthera sparse rollout only supports qpos actions")
         actions = np.asarray(chunk_actions, dtype=float)
         if actions.ndim != 2 or actions.shape[1] != 7:
             raise ValueError(f"single-Panthera actions must have shape [N, 7], got {actions.shape}")
-        return super().gen_sparse_reward_data(
-            np.concatenate((actions, actions), axis=1), action_type=action_type
+        if not np.all(np.isfinite(actions)):
+            raise ValueError("single-Panthera actions must be finite")
+
+        reward_variant = getattr(self, "rl_reward_variant", "legacy")
+        use_effect_reward = (
+            reward_variant in {"r1", "r2"}
+            and hasattr(self, "policy_release_effect_state")
         )
+        previous_effect = (
+            self.policy_release_effect_state(update_settle=False)
+            if use_effect_reward
+            else None
+        )
+        if use_effect_reward:
+            self._record_policy_effect(None, previous_effect)
+        info = {"success": bool(getattr(self, "eval_success", False))}
+        reward = np.array([float(info["success"])], dtype=np.float32)
+        termination = np.array([int(info["success"])], dtype=np.int32)
+        truncation = np.array([0], dtype=np.int32)
+        if info["success"]:
+            info["executed_steps"] = 1
+            if use_effect_reward:
+                info["step_rewards"] = [0.0]
+                info.update(self._policy_episode_metrics(previous_effect))
+            return reward, termination, truncation, info
+
+        remaining = max(0, int(self.step_lim) - int(self.take_action_cnt))
+        if remaining == 0:
+            truncation[0] = 1
+            info["executed_steps"] = 1
+            if use_effect_reward:
+                info["step_rewards"] = [0.0]
+                info.update(self._policy_episode_metrics(previous_effect))
+            return reward, termination, truncation, info
+
+        actions = actions[:remaining]
+        measured = self._actual_robot_state()
+        previous_arm = np.asarray(measured["arm_qpos"], dtype=float)
+        previous_gripper = float(measured["gripper_qpos"])
+        physics_steps_per_action = 5
+        policy_period_s = physics_steps_per_action / 250.0
+        executed_steps = 0
+        step_rewards: list[float] = []
+        reward_components: list[dict[str, float]] = []
+
+        for action_offset, target in enumerate(actions):
+            target_arm = np.asarray(target[:6], dtype=float)
+            target_gripper = float(np.clip(target[6], 0.0, 1.0))
+            target_velocity = (target_arm - previous_arm) / policy_period_s
+            if use_effect_reward:
+                self._record_policy_action_motion(
+                    target_arm=target_arm,
+                    previous_arm=previous_arm,
+                    target_gripper=target_gripper,
+                    previous_gripper=previous_gripper,
+                    is_chunk_start=action_offset == 0,
+                )
+
+            # Expert replay applies the task's release-contact calibration on
+            # the first closed-to-open transition.  Keep the same transition
+            # in policy rollout so success is not decided by executor drift.
+            if (
+                previous_gripper < 0.5 <= target_gripper
+                and not getattr(self, "_policy_release_solver_configured", False)
+                and hasattr(self, "_configure_release_contact_solver")
+            ):
+                self._configure_release_contact_solver()
+                self._policy_release_solver_configured = True
+
+            for _ in range(physics_steps_per_action):
+                self.robot.set_arm_joints(target_arm, target_velocity, "left")
+                self.robot.set_gripper(target_gripper, "left")
+                self._step_scene()
+
+            self.take_action_cnt += 1
+            executed_steps += 1
+            previous_arm = target_arm
+            previous_gripper = target_gripper
+
+            if use_effect_reward:
+                current_effect = self.policy_release_effect_state(update_settle=True)
+                self._record_policy_effect(previous_effect, current_effect)
+                transition = evaluate_transition(
+                    previous_effect,
+                    current_effect,
+                    variant=reward_variant,
+                    previous_action=self._rl_previous_action,
+                    current_action=target,
+                )
+                step_rewards.append(transition.total)
+                reward_components.append(
+                    {
+                        "task": transition.task,
+                        "shaping": transition.shaping,
+                        "time": transition.time,
+                        "arm_action_change": transition.arm_action_change,
+                        "previous_potential": transition.previous_potential,
+                        "next_potential": transition.next_potential,
+                    }
+                )
+                self._rl_previous_action = target.copy()
+                previous_effect = current_effect
+                if current_effect.success:
+                    self.eval_success = True
+                    info["success"] = True
+                    termination[0] = 1
+                    info["termination_reason"] = "stable_insertion"
+                    break
+                if current_effect.hard_failure:
+                    termination[0] = 1
+                    info["hard_failure"] = True
+                    info["termination_reason"] = "unrecoverable_object_state"
+                    break
+            elif self.check_success():
+                self.eval_success = True
+                info["success"] = True
+                reward[0] = 1.0
+                termination[0] = 1
+                break
+
+        if self.take_action_cnt >= self.step_lim and not info["success"]:
+            truncation[0] = 1
+        info["executed_steps"] = max(1, executed_steps)
+        if use_effect_reward:
+            if not step_rewards:
+                step_rewards = [0.0]
+            reward[0] = float(sum(step_rewards))
+            info["step_rewards"] = step_rewards
+            info["reward_components"] = reward_components
+            info.update(self._policy_episode_metrics(previous_effect))
+        return reward, termination, truncation, info
 
     def _move_arm(self, action, stage: str) -> bool:
         """Execute one single-arm action group and retain its milestone frame."""

@@ -7,7 +7,7 @@
 
 第一次 16 条未见轨迹的 0/16 不能用于评价模型，因为 RLinf 官方评测路径只加载了
 proprio projector，遗漏了训练输出目录中独立保存的连续 L1 action head，实际执行的是
-离散 token fallback。项目补丁 `overlays/rlinf/patches/rlinf_openvla_oft_l1_eval.patch` 已修正加载与
+离散 token fallback。项目补丁 `overlays/rlinf/patches/rlinf_panthera_runtime.patch` 已修正加载与
 批量推理，离线 episode 0 五点探针得到平均绝对误差 0.04275、最大绝对误差 0.17059。
 
 修正后合并运行训练 seed 0 和未见 seed 200001，结果仍为 0/2。每条轨迹完整执行 160 个
@@ -54,7 +54,7 @@ RLinf 会发现全机四卡，然后把外层 `CUDA_VISIBLE_DEVICES=1,2` 内的 
 再次写进 worker 环境，导致错误占用物理 GPU0/1。错误启动在模型进入有效轨迹前终止并归档，
 GPU0 已回到 16 MiB 基线。
 
-`overlays/rlinf/patches/rlinf_cuda_visible_subset.patch` 将计算 worker 的 local rank 通过父进程掩码
+`overlays/rlinf/patches/rlinf_panthera_runtime.patch` 将计算 worker 的 local rank 通过父进程掩码
 翻译回物理编号，同时保留无 GPU 管理 worker 的全机声明。单元验证为 `0→1`、`1→2`，
 运行时 `nvidia-smi` 也确认两个模型 PID 只位于物理 GPU1/2。
 

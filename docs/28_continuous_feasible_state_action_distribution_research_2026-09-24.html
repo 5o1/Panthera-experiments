@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Panthera Project">
+  <meta name="description" content="连续可接受状态集合与多解动作分布的监督学习文献调查及 Panthera 实验方案">
+  <title>从离散示范点到连续可行域：状态—动作分布学习研究报告</title>
+  <style>
+    @page { size: A4; margin: 18mm 17mm 19mm; @bottom-center { content: counter(page); font-size: 8.5pt; color: #64748b; } }
+    * { box-sizing: border-box; }
+    html { font-size: 10.5pt; }
+    body { margin: 0; color: #17212b; background: white; font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; line-height: 1.68; }
+    h1, h2, h3 { color: #102a43; line-height: 1.3; break-after: avoid; }
+    h1 { font-size: 25pt; margin: 0 0 7mm; }
+    h2 { font-size: 16pt; margin: 8mm 0 3mm; padding-bottom: 1.5mm; border-bottom: 1px solid #c7d7e5; }
+    h3 { font-size: 12.2pt; margin: 5mm 0 1.5mm; }
+    p { margin: 0 0 2.6mm; text-align: justify; }
+    a { color: #096b87; text-decoration: none; }
+    code { font-family: "Cascadia Mono", "Noto Sans Mono CJK SC", monospace; font-size: .91em; color: #7c2d12; }
+    pre { margin: 2mm 0 4mm; padding: 3mm 4mm; white-space: pre-wrap; background: #f2f7fa; border-left: 3px solid #167b78; line-height: 1.55; break-inside: avoid; }
+    table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.1pt; break-inside: avoid; }
+    table.long-table { break-inside: auto; }
+    table.long-table tr { break-inside: avoid; }
+    th, td { border: 1px solid #bdccd8; padding: 1.8mm 2mm; vertical-align: top; }
+    th { background: #eaf2f7; color: #153449; }
+    ul, ol { margin: 1.5mm 0 3mm 6mm; padding-left: 4mm; }
+    li { margin-bottom: 1.2mm; }
+    .cover { min-height: 245mm; display: flex; flex-direction: column; justify-content: center; page-break-after: always; }
+    .eyebrow { color: #0f766e; font-size: 11pt; font-weight: 700; letter-spacing: .15em; margin-bottom: 5mm; }
+    .subtitle { font-size: 14pt; color: #486581; max-width: 155mm; margin-bottom: 12mm; }
+    .meta { border-top: 1px solid #9fb3c8; padding-top: 6mm; color: #526578; }
+    .result { margin: 10mm 0; padding: 5mm 6mm; background: #e8f7f3; border-left: 4px solid #119d82; font-size: 11.5pt; }
+    .abstract { background: #f6f9fc; border: 1px solid #d8e3ec; padding: 5mm; margin-bottom: 5mm; }
+    .callout { background: #fff8e8; border-left: 4px solid #d99100; padding: 3mm 4mm; margin: 3mm 0 5mm; break-inside: avoid; }
+    .limit { background: #fff1f2; border-left-color: #be123c; }
+    .success { background: #edfdf7; border-left-color: #0f9f75; }
+    .formula { background: #f3f7fb; border: 1px solid #d7e2ec; padding: 3mm 4mm; margin: 3mm 0 4mm; font-family: "Cambria Math", serif; break-inside: avoid; }
+    .figure { margin: 4mm 0 6mm; break-inside: avoid; }
+    .figure svg { width: 100%; height: auto; display: block; border: 1px solid #d4e0e8; background: #fbfdff; }
+    .caption { font-size: 9pt; color: #526578; margin-top: 1.5mm; text-align: center; }
+    .refs p { padding-left: 8mm; text-indent: -8mm; margin-bottom: 3mm; }
+    .page-break { page-break-before: always; }
+    .keep { break-inside: avoid; }
+    .small { font-size: 8.8pt; color: #526578; }
+    @media print { a { color: inherit; } }
+  </style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="eyebrow">PANTHERA PROJECT · 文献与方法调查</div>
+  <h1>从离散示范点到连续可行域</h1>
+  <div class="subtitle">连续可接受状态集合、成功概率场与多解动作分布的监督学习研究</div>
+  <div class="result"><strong>核心结论：</strong>用户提出的问题不是单纯的“输出多模态”。更完整的数学对象是状态—动作（或状态—轨迹）空间上的连续成功概率场。可接受释放状态和可行动作分别是该概率场的超水平集；在这些集合内部，策略还需要表示多条都能成功的轨迹。普通单示范行为克隆只学习专家访问并选择过的点，不能从有限点样本识别完整可行域。</div>
+  <div class="meta">
+    <p><strong>任务背景：</strong>一台 Panthera 机械臂、一个夹爪，将圆柱放入凹槽</p>
+    <p><strong>检索日期：</strong>2026-09-24（Asia/Shanghai）</p>
+    <p><strong>方法修订：</strong>2026-09-24；逐篇补充问题定义、模型、损失和数据构造</p>
+    <p><strong>原文归档：</strong><code>docs/references/papers/continuous_feasible_distributions/</code></p>
+    <p><strong>证据性质：</strong>文献调查与待验证方案；没有在本报告中启动训练或真机实验</p>
+  </div>
+</section>
+
+<section>
+  <div class="abstract">
+    <h2 style="margin-top:0">摘要</h2>
+    <p>本报告从问题本身出发，而不是预先假定某个机器人模型或训练方法。第一层问题是：给定物理状态，哪些动作或未来轨迹能够成功？第二层问题是：哪些邻近状态都允许执行“释放”并最终入槽？第三层问题是：如何从图像观测和机器人状态学习这些连续对象。条件密度估计、集合值回归、可生存状态—动作集合和可行性学习分别提供了部分答案；能量模型、条件生成模型和扩散策略则提供了表示多解动作分布的工具。</p>
+    <p>文献支持把 Panthera 的目标写成 <em>成功概率场 → 可接受区域 → 区域内动作分布</em> 三层，而不是把每张图像强制回归到唯一专家动作。不同研究对训练数据的处理并不相同。混合密度网络、Multiple Choice Learning 和条件变分自编码器可以直接使用普通输入—输出样本，只改变模型输出和损失；Implicit Behavioral Cloning 会为专家动作生成对比负样本，Diffusion Policy 会把示范切成时间窗口并向动作块加入训练噪声；真正学习“哪些邻近状态—动作都可行”的工作则需要规划器、仿真器或环境额外返回可行/失败标签。最接近用户设想的 Theile 等不是对专家轨迹做简单增强，而是反复查询可行性函数，并让生成器匹配全部可行动作组成的目标分布。</p>
+    <p>有限数据集始终由离散记录组成。“连续”来自模型对连续坐标定义函数或密度，以及采样对目标邻域的覆盖，不是把数据文件本身变成连续对象。仅有一条专家轨迹时，“专家只展示了一个选择”和“实际上只有一个可行选择”在数据上不可区分。因此，如果要学习完整可行域，必须额外查询仿真结果、规划器、接触/几何判据，或者为同一邻域收集多个成功与失败后继。</p>
+  </div>
+
+  <h2>1　先把问题说准确</h2>
+  <p>设 <code>s</code> 是完整物理状态，例如圆柱相对槽的位置和姿态、末端位姿、关节速度、夹爪开度与接触状态；<code>a</code> 是一个动作块或短轨迹；<code>Y=1</code> 表示执行后满足“圆柱稳定入槽并解除夹持”。用户的想法可写成：</p>
+
+  <div class="formula"><strong>联合成功概率场：</strong><br>g(s, a) = P(Y = 1 | s, a)</div>
+
+  <p><code>g</code> 不是给每个状态指定唯一动作，而是给每个状态—动作组合一个成功概率。由它可以导出两个集合：</p>
+
+  <div class="formula"><strong>可接受释放状态：</strong> S<sub>τ</sub> = {s : P(Y=1 | s, execute release) ≥ τ}<br><strong>状态 s 下的可行动作：</strong> A<sub>τ</sub>(s) = {a : g(s,a) ≥ τ}</div>
+
+  <p>第一式表达“末端不必精确位于一个点，只要落在允许释放的连续区域内即可”；第二式表达“同一状态下向左或向右绕行都可能成功”。这比“输入和输出都有噪声”更准确，因为研究对象是可接受集合及其内部结构。</p>
+
+  <div class="callout"><strong>集合不自动等于概率分布。</strong> 一个可接受区域只回答成员关系。要把它变成概率密度，还必须说明如何在区域内加权。例如可以从基础采样密度 <code>p₀(s)</code> 出发，定义 <code>q(s) ∝ p₀(s)·w(g(s))</code>。若不指定 <code>p₀</code> 和权重函数，所谓“可接受输入分布”并不唯一。</div>
+
+  <p>相机图像也不是独立的三维空间。若 <code>o</code> 是图像、<code>c</code> 是相机参数，那么图像分布由物理状态与相机投影共同产生：</p>
+  <div class="formula">q<sub>O</sub>(o) = ∫ p(o | s,c) q<sub>S</sub>(s) p(c) ds dc</div>
+  <p>因此，像素上“接近”不保证物理状态接近；相同物理状态在不同相机下也会形成不同像素。仿真中应先用物理状态定义成功与可接受区域，再把该分布渲染为训练图像，而不是直接在 RGB 像素上画欧氏邻域。</p>
+</section>
+
+<section>
+  <h2>2　检索路线：没有从机器人术语开始</h2>
+  <p>检索按数学对象逐层展开，避免先假定“这就是扩散策略”“这就是强化学习”：</p>
+  <table class="long-table">
+    <thead><tr><th>检索层</th><th>一般问题</th><th>代表关键词</th><th>保留的研究线</th></tr></thead>
+    <tbody>
+      <tr><td>条件输出</td><td>一个输入是否可以对应多个连续输出？</td><td>conditional density、multivalued regression、multifunction</td><td>混合密度网络、条件密度估计、集合值回归</td></tr>
+      <tr><td>连续区域</td><td>如何表示“答案位于一片区域”而非一个点？</td><td>density level set、prediction region、superlevel set</td><td>条件密度超水平集、直接区域回归</td></tr>
+      <tr><td>状态—动作集合</td><td>哪些状态仍存在成功后继，哪些动作保持可行？</td><td>viability kernel、state-action feasible set、reachability</td><td>可生存核、安全/可行状态—动作集合</td></tr>
+      <tr><td>监督来源</td><td>不做在线奖励优化，怎样得到可行性标签？</td><td>learned feasibility、planner oracle、outcome supervised</td><td>规划器/仿真器查询、成功失败分类</td></tr>
+      <tr><td>机器人策略</td><td>怎样生成多条连贯的有效动作序列？</td><td>multimodal imitation、energy policy、generative policy</td><td>隐式行为克隆、条件生成模型、扩散动作序列</td></tr>
+    </tbody>
+  </table>
+  <p>完整原文、来源和哈希见<a href="references/continuous_feasible_distribution_papers.md">论文索引</a>。检索得到的研究不是单一路线：有些估计概率密度，有些直接估计集合边界，有些只学习可行性分类器，有些生成多个输出。报告后文把这些对象分开，避免把“预测不确定性”“可行域”“专家偏好”和“随机策略”混成同一件事。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 900 270" role="img" aria-label="从结果标签到可行策略的三层结构">
+      <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#57758c"/></marker></defs>
+      <rect x="24" y="58" width="230" height="145" rx="12" fill="#e7f4f3" stroke="#16827c"/>
+      <text x="139" y="91" text-anchor="middle" font-size="22" font-weight="700" fill="#104f4c">成功概率场</text>
+      <text x="139" y="125" text-anchor="middle" font-size="18" fill="#294c5b">g(s,a)=P(success|s,a)</text>
+      <text x="139" y="159" text-anchor="middle" font-size="16" fill="#486581">由仿真/规划/结果标签估计</text>
+      <line x1="265" y1="130" x2="328" y2="130" stroke="#57758c" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="340" y="40" width="220" height="180" rx="12" fill="#eef3fb" stroke="#4a68a6"/>
+      <text x="450" y="76" text-anchor="middle" font-size="22" font-weight="700" fill="#2f4678">可接受集合</text>
+      <text x="450" y="112" text-anchor="middle" font-size="18" fill="#334e68">Sτ 与 Aτ(s)</text>
+      <text x="450" y="148" text-anchor="middle" font-size="16" fill="#486581">状态区域 + 动作支持集</text>
+      <text x="450" y="180" text-anchor="middle" font-size="16" fill="#486581">允许分离、非凸和多模态</text>
+      <line x1="571" y1="130" x2="634" y2="130" stroke="#57758c" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="646" y="58" width="230" height="145" rx="12" fill="#fff5df" stroke="#c98514"/>
+      <text x="761" y="91" text-anchor="middle" font-size="22" font-weight="700" fill="#7c520d">条件轨迹分布</text>
+      <text x="761" y="125" text-anchor="middle" font-size="18" fill="#5a4725">π(a|s), support⊆Aτ(s)</text>
+      <text x="761" y="159" text-anchor="middle" font-size="16" fill="#66563b">生成一条连贯可执行轨迹</text>
+      <text x="450" y="253" text-anchor="middle" font-size="16" fill="#526578">三层可分别学习和验收；不能用单一逐点 L1 同时替代</text>
+    </svg>
+    <div class="caption">图 1　用户想法的三个不同数学对象及其依赖关系</div>
+  </div>
+</section>
+
+<section>
+  <h2>3　先用同一套问题阅读每种方法</h2>
+  <p>下面不再只列方法名称。每种方法都回答五个固定问题：一条训练记录包含什么；模型接收什么；模型输出什么；损失怎样训练该输出；部署时怎样得到动作或集合。表 1 先给出全貌，后续小节再展开公式和数据流程。</p>
+
+  <table class="long-table">
+    <thead><tr><th>方法</th><th>论文定义的问题与模型输出</th><th>训练数据和处理</th><th>是否能识别未示范可行域</th></tr></thead>
+    <tbody>
+      <tr><td>混合密度网络（MDN）[1]</td><td>学习 <code>p(y|x)</code>；网络输出每个高斯分量的权重、均值和方差</td><td>普通成对样本 <code>(x,y)</code>；用负对数似然训练，无需额外标签</td><td>不能；只拟合样本分布中已经出现的分支</td></tr>
+      <tr><td>集合值/条件模态回归[3,5]</td><td>估计条件密度，并返回每个 <code>x</code> 下的一个或多个局部模态</td><td>普通成对样本；核密度方法会按 <code>x</code> 和 <code>y</code> 邻近性加权</td><td>不能；平滑和带宽只是结构假设</td></tr>
+      <tr><td>Multiple Choice Learning（MCL）[7]</td><td>一次输出 <code>M</code> 个候选，集合损失只计算最接近标签的候选</td><td>普通成对样本；一条记录只有一个真值也可训练</td><td>不能；未被最佳候选使用的输出不保证可行</td></tr>
+      <tr><td>条件变分自编码器（CVAE）[8]</td><td>学习带潜变量 <code>z</code> 的 <code>p(y|x,z)</code>；改变 <code>z</code> 可生成不同输出</td><td>普通成对样本；训练时额外从近似后验采样 <code>z</code></td><td>不能；生成范围仍由训练输出决定</td></tr>
+      <tr><td>Implicit Behavioral Cloning（IBC）[12]</td><td>学习状态—动作能量 <code>E(o,a)</code>；低能量动作是候选策略</td><td>专家动作作为正样本，训练时为每个观测生成多个动作负样本</td><td>通常不能；未展示但可行的动作可能被当作负样本</td></tr>
+      <tr><td>Diffusion Policy[13]</td><td>学习 <code>p(A_t|O_t)</code>；从噪声迭代生成完整动作块</td><td>示范切成观测历史和未来动作块；随机向动作块加扩散噪声</td><td>不能；噪声是数值训练机制，不是物理成败标签</td></tr>
+      <tr><td>条件密度超水平集[15,16]</td><td>估计条件密度后，返回包含指定概率质量的高密度区域</td><td>普通观测样本；拟合混合分布或直接学习区域边界</td><td>只有被估计的密度本身就是成功概率时才接近可行域</td></tr>
+      <tr><td>规划器可行性分类[10]</td><td>输入场景几何，输出某个运动规划问题可行/不可行</td><td>专门运行规划器产生二分类标签；不是示范动作数据</td><td>可以近似规划器标出的区域，但受查询覆盖和误标影响</td></tr>
+      <tr><td>可生存状态—动作集合[11]</td><td>学习哪些 <code>(s,a)</code> 会转移到仍可避免失败的状态，并计算可行动作体积</td><td>主动执行动作，保存 <code>(s,a,s',failed)</code></td><td>可以近似安全/可生存域；不等同于任务成功域</td></tr>
+      <tr><td>全部可行动作生成[14]</td><td>给定二值可行函数 <code>g(s,a)</code>，学习覆盖 <code>A⁺(s)</code> 的条件生成器</td><td>对同一状态查询多个动作；可直接查仿真函数，或用成败回放训练 critic</td><td>最接近本问题；能否覆盖取决于可行性查询和采样覆盖</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout"><strong>一个必须先纠正的表述。</strong> 推理时模型收到的是一次具体观测 <code>x</code>，不是把一个概率分布整体塞进网络。概率分布描述训练样本如何产生，或者描述给定 <code>x</code> 后哪些输出具有多大概率。“附近哪些输入都允许释放”则应表示成定义在连续状态上的成功函数及其阈值集合，而不只是输入随机变量 <code>X</code>。</div>
+</section>
+
+<section>
+  <h2>4　只改输出模型：数据集可以保持普通成对样本</h2>
+
+  <h3>4.1 混合密度网络：输出一组分布参数</h3>
+  <p>MDN 的一条训练记录仍是 <code>(xᵢ,yᵢ)</code>。网络不再直接输出一个预测值，而是输出 <code>K</code> 个混合权重 <code>αₖ(x)</code>、均值 <code>μₖ(x)</code> 和协方差 <code>Σₖ(x)</code>：</p>
+  <div class="formula">p(y|x) = Σ<sub>k=1..K</sub> α<sub>k</sub>(x) · N(y; μ<sub>k</sub>(x), Σ<sub>k</sub>(x))<br>L = −Σ<sub>i</sub> log p(y<sub>i</sub>|x<sub>i</sub>)</div>
+  <p>训练损失要求观测到的 <code>yᵢ</code> 在预测分布下具有高概率。若相近的 <code>x</code> 在数据里对应多个不同的 <code>y</code>，不同混合分量可以覆盖不同分支；平方误差则倾向输出这些分支的平均值。论文无需为每个 <code>x</code> 列出全部答案，也没有把数据集改造成可行/不可行分类数据[1]。因此，MDN 解决的是“如何表示示范分布的一对多”，没有回答“示范外的动作是否也成功”。</p>
+
+  <h3>4.2 MCL：保证候选集合里至少有一个接近标签</h3>
+  <p>MCL 为每个输入产生 <code>M</code> 个候选 <code>{ŷ₁,…,ŷM}</code>，并使用 hindsight/oracle set loss：</p>
+  <div class="formula">L<sub>set</sub>(xᵢ,yᵢ) = min<sub>m=1..M</sub> ℓ(yᵢ, ŷ<sub>im</sub>)</div>
+  <p>只有当前最接近标签的候选承担该样本的任务损失，所以多个预测器会像聚类中心一样分工。训练集仍可只有普通单真值样本[7]。这种目标适用于“后续用户或模块能从候选中挑出最好一个”的场景；它不要求其他 <code>M−1</code> 个候选正确，也没有给每个候选分配成功概率。因此，MCL 证明监督学习可以输出集合，却不能单独用作 Panthera 的可行性判定器。</p>
+
+  <h3>4.3 CVAE：用潜变量索引同一输入下的多种输出</h3>
+  <p>CVAE 把输入记为 <code>x</code>、输出记为 <code>y</code>、潜在选择记为 <code>z</code>。训练时，识别网络 <code>qφ(z|x,y)</code> 看见输入和真值输出；条件先验 <code>pθ(z|x)</code> 只看输入；生成网络 <code>pθ(y|x,z)</code> 用二者生成输出。优化目标包含重建项和 KL 项：</p>
+  <div class="formula">ELBO = E<sub>qφ(z|x,y)</sub>[log pθ(y|x,z)] − KL(qφ(z|x,y) || pθ(z|x))</div>
+  <p>部署时没有真值 <code>y</code>，从 <code>pθ(z|x)</code> 采样不同 <code>z</code>，再生成不同输出[8]。训练数据仍是普通 <code>(x,y)</code>；论文中的遮挡噪声是语义分割实验的正则化技巧，不是 CVAE 表达多解所必需的可行性标签。与 MDN 一样，CVAE 学到的是数据中的输出变化。</p>
+
+  <h3>4.4 集合值回归：返回条件密度的多个峰</h3>
+  <p>Einbeck 与 Tutz 先用核函数估计 <code>f(y|x)</code>，再寻找对固定 <code>x</code> 而言所有局部最大值，将它们作为集合值回归结果[3]。这里的“连续”来自核函数和带宽：附近样本对当前 <code>x</code> 的估计贡献更大。Sugiyama 等同样直接估计条件密度，而不把答案压缩成均值[5]。这类方法不需要新标签，但需要数据在邻域内足够密集；如果每个高维图像附近只出现一条专家动作分支，平滑算法也无法知道另一条未观察路线。</p>
+
+  <h3>4.5 概率输出不能继续只用单点 L1 评价</h3>
+  <p>Gneiting 与 Raftery 研究的是概率预测的评价规则，不是新的动作生成器[4]。严格适当评分规则要求：在真实结果分布下，模型诚实报告该分布时得到最低期望损失。负对数似然可评价完整条件密度，Brier score 可评价二分类成功概率；可靠性图则检查“预测成功率为 0.8”的样本是否约有 80% 实际成功。它不要求改变训练数据格式，但验证集必须包含由同一目标采样过程产生的真实结果。若 Panthera 只保存成功样本，就无法校准 <code>P(success|s,a)</code>。</p>
+</section>
+
+<section>
+  <h2>5　改变训练样本：IBC 与 Diffusion Policy 实际做了什么</h2>
+
+  <h3>5.1 IBC 会生成动作负样本</h3>
+  <p>IBC 的网络同时接收观测 <code>o</code> 和候选动作 <code>a</code>，输出标量能量 <code>Eθ(o,a)</code>。策略不是网络一次前向直接给出的向量，而是在动作空间中寻找低能量动作：</p>
+  <div class="formula">â = arg min<sub>a</sub> Eθ(o,a), &nbsp;&nbsp; pθ(a|o) ∝ exp(−Eθ(o,a))</div>
+  <p>训练数据中的专家对 <code>(oᵢ,aᵢ⁺)</code> 是正样本。论文为每个观测生成一组候选负动作 <code>{ãᵢⱼ}</code>，用 InfoNCE 形式让专家动作的能量低于这些候选：</p>
+  <div class="formula">L<sub>IBC</sub> = −log [ exp(−E(oᵢ,aᵢ⁺)) / (exp(−E(oᵢ,aᵢ⁺)) + Σⱼ exp(−E(oᵢ,ãᵢⱼ))) ]</div>
+  <p>这里确实对数据做了特殊处理，但只是训练时生成对比动作，并没有执行这些动作验证成败[12]。对于“未示范动作也可能正确”的问题，这是一个实质限制：随机负动作中可能混入可行动作，训练却会把它们推向高能量。要避免这一点，需要多正样本、结果标签，或只从已知不可行区域采负样本。</p>
+
+  <h3>5.2 Diffusion Policy 会切时间窗口并污染动作块</h3>
+  <p>Diffusion Policy 先把示范轨迹整理为滑动窗口。时刻 <code>t</code> 的一条训练记录包含最近 <code>Tₒ</code> 步观测 <code>Oₜ</code> 和未来 <code>Tₚ</code> 步专家动作块 <code>Aₜ⁰</code>。训练时随机选扩散步 <code>k</code>，向整段专家动作加入高斯噪声 <code>εᵏ</code>，网络预测被加入的噪声：</p>
+  <div class="formula">L<sub>diff</sub> = MSE(εᵏ, εθ(Oₜ, Aₜ⁰ + εᵏ, k))</div>
+  <p>部署时从高斯噪声动作块开始，迭代去噪得到 <code>Aₜ</code>；只执行前 <code>Tₐ</code> 步，再读取新观测重新规划[13]。因此，它包含三种数据处理：轨迹归一化、固定长度窗口、训练时噪声污染。这里的高斯噪声只用于教会模型逆向生成专家动作分布，并不表示“加噪后的动作在物理环境中也成功”。Diffusion Policy 能保留示范中已有的多条轨迹，也能让动作块内部保持时间一致，但它不会凭空把专家轨迹周围都标成可行域。</p>
+
+  <div class="callout"><strong>容易混淆的两种“加噪”。</strong> 扩散训练把噪声加到数值表示上，目标仍是恢复原专家动作；可行域采集则必须真正把扰动后的状态—动作送入仿真器或规划器，并记录其成功或失败。前者是生成模型训练方法，后者才产生关于物理邻域的新知识。</div>
+</section>
+
+<section>
+  <h2>6　学习可接受输入区域：必须改变监督来源</h2>
+
+  <h3>6.1 条件密度超水平集表示“常见区域”，不自动表示“成功区域”</h3>
+  <p>Camehl、Fok 与 Gruber 的输入是普通随机样本。方法先拟合变量的联合分布，再从中计算条件密度 <code>f(y|x)</code>，最后寻找阈值 <code>cα(x)</code>，使集合</p>
+  <div class="formula">C<sub>α</sub>(x) = { y : f(y|x) ≥ c<sub>α</sub>(x) }，且 P(Y∈C<sub>α</sub>(x)|x)=α</div>
+  <p>包含指定概率质量。论文使用带层级 Dirichlet 先验的过拟合有限高斯混合模型拟合分布，区域可以非凸、分离或多模态[15]；Braun 等进一步研究直接学习最小体积超水平区域[16]。数据本身不需要成功/失败标签，因为论文的目标只是描述观测变量的高密度区域。</p>
+  <p>若直接把 Panthera 的成功释放状态拿来拟合密度，得到的是“采集程序经常产生的成功状态”，它同时受采样器偏好影响。它不能区分“这个状态没有被采到”和“这个状态执行释放会失败”。要得到允许释放区域，应采集成功和失败结果并估计 <code>P(success|s,release)</code>，再对这个函数切阈值。</p>
+
+  <h3>6.2 Wells：让运动规划器为约一万次查询打标签</h3>
+  <p>Wells 等没有训练动作生成策略。他们把桌面物体的相对位置、尺寸等几何量组成特征，问题标签是指定取放运动能否被规划器解出。训练数据由专门实验生成：两个长方体放在覆盖机械臂可达桌面的 10 cm 网格上；每个问题运行 RRT-Connect 三次，每次最长 30 秒；三次中任一次找到路径就标为可行。最终约一万次查询用于训练带径向基核的支持向量机[10]。</p>
+  <p>这是一套重新生成的可行性数据集，不是对专家轨迹做增强。分类器只用于给搜索排序，最终仍由运动规划器核验，因此论文允许启发式分类器犯错。它证明规划器可以充当离线标签源，但“超时未找到路径”并不等于数学上不可行，所以标签规则和超时本身构成误差来源。</p>
+
+  <h3>6.3 Heim：主动收集状态转移和失败，而不是拟合专家动作</h3>
+  <p>Heim 等先定义失败状态集合 <code>S_F</code>。可生存核 <code>S_V</code> 包含所有“至少存在一种动作能让系统以后持续避免失败”的状态；状态—动作可生存集合 <code>Q_V</code> 包含所有会转移回 <code>S_V</code> 的 <code>(s,a)</code>。安全度量 <code>Λ(s)</code> 是状态 <code>s</code> 下可生存动作切片的体积：体积越大，说明容许的动作越多[11]。</p>
+  <p>其学习数据来自主动执行动作。每次得到 <code>(s,a,s',failed)</code>，用高斯过程估计状态—动作安全度量，再优先采集对边界最有信息、同时估计风险较低的位置。这不是静态专家示范数据。它与用户思想相近之处是显式度量“一个状态拥有多宽的正确动作集合”；差异是论文目标为无限期避免失败，不是完成圆柱入槽。</p>
+
+  <h3>6.4 Theile：直接把全部可行动作定义为目标分布</h3>
+  <p>Theile 等给出最接近本问题的形式化。首先定义二值可行性函数和状态条件动作集合：</p>
+  <div class="formula">g:S×A→{0,1}<br>A⁺<sub>s</sub> = {a∈A : g(s,a)=1}</div>
+  <p>可行性生成器接收状态 <code>s</code> 和潜变量 <code>z</code>，输出动作 <code>a=πθ(s,z)</code>。论文要求该映射覆盖 <code>A⁺s</code>，并把目标密度定义为可行集合内的均匀分布：</p>
+  <div class="formula">p(a|s) = g(s,a) / ∫<sub>A</sub> g(s,a') da'</div>
+  <p>训练时，一个状态不是只配一个专家动作。生成器先为同一状态提出 <code>N</code> 个动作，再对这些动作加小扰动形成更多查询点；核密度估计用于近似生成器当前的动作密度；可行性函数 <code>g</code> 为每个查询点返回可行/不可行；最后用 Jensen–Shannon、正向或反向 KL 等分布差异更新生成器[14]。因此，损失直接比较“生成动作分布”和“可行集合上的目标分布”，而不是比较某个动作与专家动作的 L1 距离。</p>
+  <p>当 <code>g</code> 是可并行仿真的解析函数时，可以在线批量查询，无需先固定数据集。当可行性只能通过真实环境实验获得时，论文另训练 critic <code>ξφ(s,a)</code> 模仿环境：回放批次一半为可行、一半为不可行，并优先执行 critic 预测接近 0.5、信息量较高的动作。其简化抓取实验使用 128×128 RGB 图像作为状态，动作是平面抓取位置 <code>(x,y)</code> 和角度 <code>α</code>；模拟器根据夹爪与物体轮廓的相对位置返回确定性的成功/失败。这里最关键的数据变化是反复查询同一状态下的多个动作并保留正、负结果。</p>
+
+  <div class="success callout"><strong>最贴近用户想法的方法并不是“把专家数据做平滑”。</strong> 它先获得一个能回答任意候选 <code>(s,a)</code> 是否可行的函数或 critic，再训练条件生成器覆盖整个可行集合。若没有可行性查询，生成器仍无法知道专家没有选中的动作是否正确。</div>
+</section>
+
+<section>
+  <h2>7　这些研究究竟怎样处理数据集</h2>
+  <p>可以把数据处理分成三个等级。等级一只改变模型和损失：MDN、MCL、CVAE、条件模态回归都可直接使用普通 <code>(x,y)</code>。等级二改变训练样本的呈现方式：IBC 合成负动作，Diffusion Policy 切动作窗口并加入数值噪声。等级三改变监督来源：Wells 运行规划器打可行标签，Heim 主动采样系统转移，Theile 对同一状态查询多个动作的可行性。只有第三类直接增加了“这个邻域里还有哪些状态—动作成功”的证据。</p>
+
+  <p>标准行为克隆观测的是 <code>sᵢ ~ d_E</code> 和 <code>aᵢ ~ π_E(a|sᵢ)</code>。它学习的是专家访问分布 <code>d_E</code> 与专家选择分布 <code>π_E</code>。即使拟合无限准确，也不能凭空知道专家没有展示的动作是否同样成功。</p>
+  <p>标准行为克隆观测的是 <code>sᵢ ~ d_E</code> 和 <code>aᵢ ~ π_E(a|sᵢ)</code>。它学习的是专家访问分布 <code>d_E</code> 与专家选择分布 <code>π_E</code>。即使拟合无限准确，也不能凭空知道专家没有展示的动作是否同样成功。</p>
+
+  <p>考虑同一状态只记录到动作 <code>a₁</code>。下面两个世界对示范数据完全一致：</p>
+  <ol>
+    <li>只有 <code>a₁</code> 可行，其他动作都失败；</li>
+    <li><code>a₁</code>、<code>a₂</code>、<code>a₃</code> 都可行，只是专家总偏好 <code>a₁</code>。</li>
+  </ol>
+  <p>没有额外查询时，任何监督算法都无法区分这两个世界。这不是模型容量不足，而是监督信号不可识别。要估计完整可行域，至少需要下列一种新证据：</p>
+  <ul>
+    <li>对状态—动作邻域运行仿真或真机结果试验，记录成功与失败；</li>
+    <li>让运动规划器、碰撞检查器或解析约束充当可行性 oracle；</li>
+    <li>同一状态附近收集多个不同但成功的后继轨迹；</li>
+    <li>提供足够强且可检验的结构假设，例如对已知对称变换保持可行。</li>
+  </ul>
+
+  <p>DAgger 解决的是另一个相关问题：策略上线后访问自身诱导的状态，专家数据应在这些状态上继续聚合[6]。<a href="https://proceedings.mlr.press/v15/ross11a.html">PMLR 2011</a>。它能改善闭环分布偏移，却仍默认由专家为访问状态给出动作；如果专家只给一种选择，DAgger 也不会自动标出所有可行选择。</p>
+
+  <div class="limit callout"><strong>“连续插值”不是充分条件。</strong> 流形正则化利用数据几何，鼓励函数沿高密度流形平滑[2]。<a href="https://www.jmlr.org/papers/v7/belkin06a.html">JMLR 2006</a>。它可以传播标签，但接触、抓取和释放属于混合动力学模式切换；跨越接触边界时，最优动作或可行集合可能突然改变。只能在经验证的局部区域施加平滑，不能假设整个任务全局光滑。</div>
+</section>
+
+<section>
+  <h2>8　强化学习早已讨论多条正确轨迹，但目标不同</h2>
+  <p>最大熵控制与“控制即概率推断”把高回报轨迹组成概率分布，而不是只保留单个最优轨迹；温度决定分布更集中于高回报解，还是覆盖更多近似最优解[9]。<a href="https://arxiv.org/abs/1805.00909">Levine 2018</a>。所以强化学习确实很早就能表达“多条轨迹都正确”。</p>
+
+  <p>不过，标准强化学习的目标通常是最大化期望回报，未必均匀覆盖所有可行解。某条轨迹只要稍微更优，策略就可能集中在那里；熵正则只鼓励分散，不保证覆盖完整可行集合。Theile 等把“先匹配全部可行动作，再在其中优化任务目标”拆成两阶段，正是对这一区别的明确处理。</p>
+
+  <p>如果仿真器可以离线接收 <code>(s,a)</code> 并返回成功标签，那么训练 <code>g(s,a)</code> 可归入监督/自监督后训练；如果策略必须通过在线试错才能知道长期结果，并以期望回报更新，那么它就是强化学习。两者边界由标签怎样获得决定，不由网络结构决定。</p>
+</section>
+
+<section>
+  <h2>9　与 Panthera 现有证据怎样连接</h2>
+  <p>现有项目记录已经证实三件事。第一，step 45000 模型在专家记录帧上能在释放窗口输出连续开爪斜坡，自主闭环却可能保持约 0.30 的闭合值。第二，step 65000 的滑动平均闭环能把圆柱稳定送到正确直接释放位，但未触发开爪。第三，专家状态上的验证 L1 下降不能预测闭环成功率。这些证据见项目内的<a href="22_single_trajectory_overfit_gate_hardening_2026-09-20.md">单轨迹过拟合门禁记录</a>和<a href="24_openvla_dynamics_proprioception_overfit_2026-09-21.md">动力学 proprio 实验</a>。</p>
+
+  <p>这些事实与“训练只看到狭窄专家状态—动作轨迹”相容，但尚不能证明连续可行域学习一定解决释放。至少还有三种替代解释：图像与 28 维本体状态仍不足以辨认接触阶段；动作 chunk 重叠执行造成闭环固定点；训练器、数据或模型容量仍使策略没有充分拟合。DDP 修复后的实验也说明历史三卡结果必须谨慎解释，见<a href="25_openvla_action_head_ddp_sync_fix_2026-09-23.md">多卡 action head 同步修复</a>。</p>
+
+  <table>
+    <thead><tr><th>现象</th><th>连续可行域假设的解释</th><th>必须排除的替代解释</th></tr></thead>
+    <tbody>
+      <tr><td>到达槽上方仍闭合</td><td>自主状态落在训练轨迹旁边；模型只学到专家轨迹上的开爪触发线，而没有学到一片可释放区域</td><td>状态不可观测、时间阶段缺失、执行聚合抑制、训练不足</td></tr>
+      <tr><td>接近圆柱时抖动</td><td>多个绕行/接近方向被逐点回归平均，或相邻查询在多种模式间切换</td><td>旧 chunk 对齐、控制频率、DDP 历史故障、碰撞与动力学</td></tr>
+      <tr><td>持物搬运相对稳定</td><td>该段可行轨迹管道较宽，状态—动作成功场对局部偏差更宽容</td><td>只在已审阅 episode 2 成立，不能外推为普遍规律</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout"><strong>当前只是可检验解释。</strong> 文献没有直接研究 Panthera 的同一故障。报告提出的是一个比“单帧到唯一动作”更合理的建模框架，而不是已经完成的根因证明。</div>
+</section>
+
+<section>
+  <h2>10　建议的监督后训练实验</h2>
+
+  <h3>10.1 先建立 release feasibility arena</h3>
+  <p>先不重训完整 VLA。围绕 episode 2 的释放位建立连续状态采样器，变量至少包含：</p>
+  <ul>
+    <li>圆柱相对槽中心的三维位置、轴向角误差和线/角速度；</li>
+    <li>末端相对圆柱/槽的位姿、六关节位置/速度/加速度/载荷；</li>
+    <li>夹爪实际开度、圆柱是否随夹爪运动、手指接触状态；</li>
+    <li>小幅相机位置、俯视角、光照和渲染扰动，但不改变任务物理标签。</li>
+  </ul>
+  <p>使用 Sobol 或拉丁超立方采样覆盖连续邻域，不只在规则网格上取点。对每个状态执行固定的释放—沉降—检查流程，并对物理微扰重复若干次，记录稳定入槽概率。采集不依赖墙钟 <code>sleep</code>，以物理步和成功/失败事件推进。</p>
+
+  <h3>10.2 每条数据应记录什么</h3>
+  <p>Panthera 不应把现有成功专家轨迹复制若干次后称为连续可行域数据。一次查询应先从人为规定的提议分布 <code>μ(s,a)</code> 中抽取物理状态和候选动作块，再由仿真结果写标签。建议每条记录至少包含：</p>
+  <table class="long-table">
+    <thead><tr><th>字段</th><th>内容</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>state_privileged</code></td><td>圆柱、槽、末端、关节、夹爪、接触和速度等仿真真值</td><td>先验证物理状态上是否真的存在可学习的连续成功区域</td></tr>
+      <tr><td><code>observation</code></td><td>策略 RGB、28 维 proprio、相机参数和时间戳</td><td>随后训练可部署观测模型；不得把仿真特权量暗中作为部署输入</td></tr>
+      <tr><td><code>action_chunk</code></td><td>完整 25×7 候选动作块及其控制语义</td><td>把左/右修正、下降、松开、撤离作为连贯轨迹评价，避免逐帧混合</td></tr>
+      <tr><td><code>outcome</code></td><td>稳定入槽、合法释放、提前释放、仍夹持、碰撞和超时</td><td>提供可行性正、负标签并区分失败原因</td></tr>
+      <tr><td><code>repeat</code></td><td>同一名义 <code>(s,a)</code> 下的物理随机 seed、成功次数 <code>k</code> 和总次数 <code>n</code></td><td>用 <code>k/n</code> 估计随机动力学下的成功概率，而非把一次偶然结果当真值</td></tr>
+      <tr><td><code>proposal</code></td><td>状态/动作采样器版本、范围和采样密度或可重放 seed</td><td>区分“采得多”与“成功率高”，并支持重要性加权或重新采样</td></tr>
+    </tbody>
+  </table>
+  <p>相机增强应对同一物理状态渲染多个视角、光照和纹理，并继承同一个物理结果标签；它训练的是观测不变性。物理状态扰动则必须重新执行动作并重新判定结果；不能假定邻近位置自动继承专家标签。训练、验证和测试也应按物理场景与随机 seed 分组，不能把同一次 rollout 的相邻帧拆到不同集合，否则会高估泛化。</p>
+
+  <h3>10.3 学习成功概率场，而不是先学习动作</h3>
+  <p>训练校准的 <code>g<sub>release</sub>(s)=P(success|release at s)</code>。第一版直接读取仿真物理状态，以验证数学假设；第二版再用策略可获得的 RGB 与 28 维 proprio 预测同一概率。验收同时报告：</p>
+  <ul>
+    <li>负对数似然、Brier score、可靠性图和预期校准误差；</li>
+    <li>阈值集合 <code>Sτ</code> 的精确率、召回率与边界附近错误；</li>
+    <li>在未见扰动 seed 和相机位姿上的稳定入槽率；</li>
+    <li>特权状态模型与可部署观测模型的差距。</li>
+  </ul>
+
+  <h3>10.4 再学习集合内的多解轨迹</h3>
+  <p>从同一释放邻域，用规划器或扰动 oracle 生成多条成功动作块：不同接近高度、左右微调、下降—松开—撤离曲线都可以保留，只要最终物理结果合格。模型候选按成本从低到高为：混合密度头、条件变分模型、隐式能量策略、动作扩散模型。当前 OpenVLA-OFT 的连续 L1 头可作为点估计基线，不能直接冒充分布基线。</p>
+
+  <p>策略目标可以写成一个被可行性加权的分布：</p>
+  <div class="formula">π(a|s) ∝ p₀(a|s) exp(β · g(s,a)), &nbsp; 或显式要求 support(π) ⊆ A<sub>τ</sub>(s)</div>
+  <p>执行时每次采样一条完整动作块并保持其模式一致，不能每帧独立在“向左”和“向右”之间抽样，否则正确的多模态会变成抖动。滚动重规划时仍需要当前项目正在调查的旧 chunk 对齐与历史条件，但它属于时间一致性轴，不替代可行域学习。</p>
+
+  <h3>10.5 最小对照</h3>
+  <table>
+    <thead><tr><th>组别</th><th>训练信号</th><th>回答的问题</th></tr></thead>
+    <tbody>
+      <tr><td>F0</td><td>现有单轨迹逐点 L1</td><td>离散专家点基线</td></tr>
+      <tr><td>F1</td><td>专家邻域增强，但仍只回归唯一动作</td><td>仅扩大输入覆盖是否足够</td></tr>
+      <tr><td>F2</td><td>成功/失败监督的 <code>g(s,a)</code> + 单一可行动作选择</td><td>显式可行性是否改善释放触发</td></tr>
+      <tr><td>F3</td><td><code>g(s,a)</code> + 多解条件轨迹分布</td><td>覆盖多条正确路线是否进一步降低抖动和失败</td></tr>
+      <tr><td>F4</td><td>F3 + 旧 chunk/动作历史一致性</td><td>可行域与时序一致性是否互补</td></tr>
+    </tbody>
+  </table>
+  <p>各组使用同一状态采样、相机 seed、动作预算和闭环初始条件。主要结果是完整任务成功、给定到位后的合法释放率、过早释放率、到位仍夹持率、碰撞冲量和动作 jerk；分布模型另报告覆盖与校准。必须保留失败标签，否则模型只会重建成功样本密度，无法知道边界在哪里。</p>
+</section>
+
+<section>
+  <h2>11　什么结果会否定这个想法</h2>
+  <p>以下任一结果都应促使项目放弃或收窄该路线：</p>
+  <ol>
+    <li>特权物理状态上的成功概率场都无法在未见扰动中校准，说明采样、标签或动力学随机化定义有问题；</li>
+    <li>F2 相比 F0/F1 不提高到位后的合法释放率，说明“缺少连续释放区域监督”不是主要瓶颈；</li>
+    <li>F3 的分布覆盖提高，但闭环抖动或成功率不改善，说明多解输出不是当前抖动根因；</li>
+    <li>特权状态 F2/F3 成功、RGB+proprio 版本失败，说明主要限制是观测可辨识性，而不是动作表示；</li>
+    <li>只有加入显式阶段或时间历史才成功，说明当前单帧观测不满足 Markov 条件，应转向层级/记忆模型。</li>
+  </ol>
+  <p>这些否定条件很重要：前人工作提供方法候选，不构成 Panthera 的硬约束。即使数学框架正确，工程收益也必须由闭环消融决定。</p>
+
+  <h2>12　结论</h2>
+  <p>用户的核心判断成立，但需要精确拆分：输入侧应学习的是连续状态上的成功概率或可接受集合；输出侧应学习的是给定状态下的可行轨迹支持及其条件分布。两者共同形成状态—动作空间上的成功结构。普通专家示范只给出该结构中的稀疏选择点，无法识别全部可行域。</p>
+  <p>这一路线不必立即进入强化学习。Panthera 已有仿真器，可以通过离线状态扰动、动作查询和结果检查建立监督数据。最小合理下一步不是直接替换成扩散模型，而是先建立并验证释放成功概率场；只有确认附近确实存在宽广且可观测的成功区域后，再训练覆盖多个可行轨迹的生成式动作策略。</p>
+
+  <div class="limit callout"><strong>报告边界。</strong> 本报告完成了文献归档、数学对象澄清和实验设计，没有执行 release arena 采样、后训练或闭环评测。现有 Panthera 故障与该理论之间仍是待验证假设。</div>
+</section>
+
+<section class="refs">
+  <h2 id="references">参考文献</h2>
+  <p>[1] C. M. Bishop, “Mixture Density Networks,” NCRG/94/004, 1994. <a href="https://www.microsoft.com/en-us/research/publication/mixture-density-networks/">Microsoft Research</a>.</p>
+  <p>[2] M. Belkin, P. Niyogi, and V. Sindhwani, “Manifold Regularization: A Geometric Framework for Learning from Labeled and Unlabeled Examples,” JMLR, 2006. <a href="https://www.jmlr.org/papers/v7/belkin06a.html">JMLR</a>.</p>
+  <p>[3] J. Einbeck and G. Tutz, “The Fitting of Multifunctions: An Approach to Nonparametric Multimodal Regression,” COMPSTAT, 2006. <a href="https://durham-repository.worktribe.com/output/1161089/the-fitting-of-multifunctions-an-approach-to-nonparametric-multimodal-regression">Durham Repository</a>.</p>
+  <p>[4] T. Gneiting and A. E. Raftery, “Strictly Proper Scoring Rules, Prediction, and Estimation,” JASA, 2007. <a href="https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf">PDF</a>.</p>
+  <p>[5] M. Sugiyama et al., “Conditional Density Estimation via Least-Squares Density Ratio Estimation,” AISTATS, 2010. <a href="https://proceedings.mlr.press/v9/sugiyama10a.html">PMLR</a>.</p>
+  <p>[6] S. Ross, G. Gordon, and D. Bagnell, “A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning,” AISTATS, 2011. <a href="https://proceedings.mlr.press/v15/ross11a.html">PMLR</a>.</p>
+  <p>[7] A. Guzmán-Rivera, D. Batra, and P. Kohli, “Multiple Choice Learning: Learning to Produce Multiple Structured Outputs,” NeurIPS, 2012. <a href="https://proceedings.neurips.cc/paper/2012/hash/cfbce4c1d7c425baf21d6b6f2babe6be-Abstract.html">NeurIPS</a>.</p>
+  <p>[8] K. Sohn, H. Lee, and X. Yan, “Learning Structured Output Representation using Deep Conditional Generative Models,” NeurIPS, 2015. <a href="https://proceedings.neurips.cc/paper/2015/hash/8d55a249e6baa5c06772297520da2051-Abstract.html">NeurIPS</a>.</p>
+  <p>[9] S. Levine, “Reinforcement Learning and Control as Probabilistic Inference: Tutorial and Review,” arXiv:1805.00909, 2018. <a href="https://arxiv.org/abs/1805.00909">arXiv</a>.</p>
+  <p>[10] A. M. Wells et al., “Learning Feasibility for Task and Motion Planning in Tabletop Environments,” IEEE RA-L, 2019. <a href="https://www.kavrakilab.org/publications/wells2019learning-feasibility-for-tmp.html">Kavraki Lab</a>.</p>
+  <p>[11] S. Heim et al., “A Learnable Safety Measure,” CoRL, 2020. <a href="https://proceedings.mlr.press/v100/heim20a.html">PMLR</a>.</p>
+  <p>[12] P. Florence et al., “Implicit Behavioral Cloning,” CoRL, 2022. <a href="https://proceedings.mlr.press/v164/florence22a.html">PMLR</a>.</p>
+  <p>[13] C. Chi et al., “Diffusion Policy: Visuomotor Policy Learning via Action Diffusion,” IJRR, 2024. <a href="https://diffusion-policy.cs.columbia.edu/">项目页</a>.</p>
+  <p>[14] M. Theile et al., “Learning to Generate All Feasible Actions,” IEEE Access, 2024. <a href="https://arxiv.org/abs/2301.11461">arXiv</a>.</p>
+  <p>[15] A. Camehl, D. Fok, and K. Gruber, “On Superlevel Sets of Conditional Densities and Multivariate Quantile Regression,” Journal of Econometrics, 2025. <a href="https://doi.org/10.1016/j.jeconom.2024.105807">DOI</a>.</p>
+  <p>[16] S. Braun, M. I. Jordan, and F. Bach, “Super-Level-Set Regression: Conditional Quantiles via Volume Minimization,” arXiv:2605.06210, 2026. <a href="https://arxiv.org/abs/2605.06210">arXiv</a>.</p>
+
+  <h2>项目内证据索引</h2>
+  <ul>
+    <li><code>docs/22_single_trajectory_overfit_gate_hardening_2026-09-20.md</code>：专家帧释放斜坡、闭环到位不松爪和聚合 L1 的限制。</li>
+    <li><code>docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md</code>：7/28 维 proprio 合同与动力学状态实验边界。</li>
+    <li><code>docs/25_openvla_action_head_ddp_sync_fix_2026-09-23.md</code>：历史三卡 action head 分叉及修复后实验解释边界。</li>
+    <li><code>docs/26_hierarchical_skill_transition_literature_review_2026-09-24.md</code>：阶段条件、终止提议与验证器的另一条候选路线。</li>
+    <li><code>docs/27_openvla_rl_release_reward_design_2026-09-24.md</code>：结果奖励、release arena 和跨 chunk 一致性的强化学习方案。</li>
+    <li><code>docs/references/continuous_feasible_distribution_papers.md</code>：16 篇本地论文原文、来源和 SHA-256。</li>
+  </ul>
+</section>
+
+</body>
+</html>

@@ -45,6 +45,14 @@
     qpos/qvel/qacc/effort 合同、GPU0 smoke、三卡后继训练和验收口径。
 23. [OpenVLA-OFT 多卡 action head 同步修复](docs/25_openvla_action_head_ddp_sync_fix_2026-09-23.md)：
     DDP forward 绕过的三卡复现、L1/diffusion 修复、历史 checkpoint 影响和复现门禁。
+24. [层级技能转移与释放失败文献调查](docs/26_hierarchical_skill_transition_literature_review_2026-09-24.md)：
+    层级技能、终止函数、外部验证器和四级消融设计。
+25. [OpenVLA 释放切换强化学习奖励设计](docs/27_openvla_rl_release_reward_design_2026-09-24.md)：
+    势函数奖励、反向课程、残差策略、RLinf 连续动作门槛和验收指标。
+26. [连续可接受状态与多解动作分布研究](docs/28_continuous_feasible_state_action_distribution_research_2026-09-24.html)：
+    可行性场、集合内条件动作分布、数据 schema 和 F0--F4 对照实验。
+27. [OpenVLA release arena 强化学习 smoke](docs/29_openvla_release_arena_rl_smoke_2026-09-24.md)：
+    连续残差 PPO、R1/R2 reward、bf16 边界修复、GPU2/3 运行证据和当前未通过门禁。
 
 ## 当前边界
 

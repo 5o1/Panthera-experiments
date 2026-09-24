@@ -22,6 +22,7 @@ from .place_cylinder_in_groove import (
     TABLE_HEIGHT_M,
     place_cylinder_in_groove,
 )
+from .panthera_release_reward import ReleaseEffectState
 from .utils import Action, Actor, ArmTag, create_box
 
 
@@ -202,6 +203,7 @@ class place_vertical_cylinder_in_groove(place_cylinder_in_groove):
         if configured is None:
             kwargs["grasp_quaternion_wxyz"] = TOP_DOWN_GRASP_QUATERNION_WXYZ
         super().setup_demo(**kwargs)
+        self.reset_policy_reward_state()
         self.physics_parameters["gripper_static_friction"] = gripper_static_friction
         self.physics_parameters["gripper_dynamic_friction"] = gripper_dynamic_friction
         pad_material = self.scene.create_physical_material(
@@ -238,6 +240,97 @@ class place_vertical_cylinder_in_groove(place_cylinder_in_groove):
             self._advance_physics(initial_gripper_settle_steps)
             self.initial_gripper_opening = initial_gripper_opening
             self.initial_gripper_settle_steps = initial_gripper_settle_steps
+
+    def reset_policy_reward_state(self) -> None:
+        """Reset release-settling latches without changing simulator state."""
+        self._rl_release_elapsed_physics_steps = 0
+        self._rl_stable_success_checks = 0
+        self._rl_success_latched = False
+        self._rl_last_effect_physics_step = int(self.simulation_step_count)
+        self._reset_policy_episode_metrics()
+
+    def policy_release_effect_state(
+        self, *, update_settle: bool
+    ) -> ReleaseEffectState:
+        """Measure privileged task effects for reward, never policy input.
+
+        Success is deliberately stricter than one instantaneous metrics check:
+        the cylinder must remain in a valid released state for at least one
+        simulated second, followed by three consecutive stable 50 Hz checks.
+        """
+        cylinder_pose = self.cylinder.get_pose()
+        cylinder_position = np.asarray(cylinder_pose.p, dtype=float)
+        target_position = np.asarray(self.groove_target_pose.p, dtype=float)
+        if not np.all(np.isfinite(cylinder_position)):
+            raise RuntimeError("cylinder pose contains NaN or infinity")
+
+        metrics = self.success_metrics()
+        contact_points = len(
+            self.get_gripper_actor_contact_position("panthera_cylinder")
+        )
+        measured = self._actual_robot_state()
+        gripper_opening = float(measured["gripper_qpos"])
+        reliably_grasped = bool(contact_points >= 2 and gripper_opening < 0.85)
+        xy_error = float(np.linalg.norm(cylinder_position[:2] - target_position[:2]))
+        valid_release = bool(
+            not reliably_grasped
+            and contact_points == 0
+            and bool(metrics["gripper_open"])
+            and xy_error <= 0.030
+            and float(metrics["height_error_m"]) <= 0.080
+            and float(metrics["axis_error_deg"]) <= 10.0
+        )
+
+        workspace = self.realized_geometry.get("workspace", {})
+        base_xy = np.asarray(
+            [
+                workspace.get("robot_base_x_m", 0.0),
+                workspace.get("robot_base_y_m", -0.35),
+            ],
+            dtype=float,
+        )
+        maximum_radius = float(workspace.get("maximum_radius_m", 0.46))
+        radial_distance = float(np.linalg.norm(cylinder_position[:2] - base_xy))
+        hard_failure = bool(
+            cylinder_position[2] < TABLE_HEIGHT_M - 0.050
+            or cylinder_position[2] > TABLE_HEIGHT_M + 1.0
+            or radial_distance > maximum_radius + 0.120
+        )
+
+        if update_settle:
+            current_step = int(self.simulation_step_count)
+            elapsed = max(0, current_step - self._rl_last_effect_physics_step)
+            self._rl_last_effect_physics_step = current_step
+            if valid_release and not hard_failure:
+                self._rl_release_elapsed_physics_steps += elapsed
+            else:
+                self._rl_release_elapsed_physics_steps = 0
+                self._rl_stable_success_checks = 0
+            instant_success = self._metrics_pass(metrics)
+            if (
+                instant_success
+                and self._rl_release_elapsed_physics_steps
+                >= SETTLE_SIMULATION_STEPS
+            ):
+                self._rl_stable_success_checks += 1
+            elif not instant_success:
+                self._rl_stable_success_checks = 0
+            if self._rl_stable_success_checks >= 3:
+                self._rl_success_latched = True
+
+        ee_position = np.asarray(self.robot.get_left_ee_pose()[:3], dtype=float)
+        return ReleaseEffectState(
+            tcp_to_object_m=float(np.linalg.norm(ee_position - cylinder_position)),
+            target_xy_error_m=xy_error,
+            target_height_error_m=float(metrics["height_error_m"]),
+            target_axis_error_deg=float(metrics["axis_error_deg"]),
+            object_linear_speed_mps=float(metrics["linear_speed_mps"]),
+            object_angular_speed_radps=float(metrics["angular_speed_radps"]),
+            grasped=reliably_grasped,
+            released_in_valid_volume=valid_release,
+            success=bool(self._rl_success_latched),
+            hard_failure=hard_failure,
+        )
 
     def _top_down_grasp(self, arm: ArmTag, contact_point_id: int):
         """Approach and descend while retaining the reachable top-down attitude."""

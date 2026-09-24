@@ -1,0 +1,935 @@
+diff --git a/requirements/install.sh b/requirements/install.sh
+index c72a697731a5f6935f6457b108da5913d37e271a..7a892ceb90b195b7d8d6eac4772a811f563d10e4 100644
+--- a/requirements/install.sh
++++ b/requirements/install.sh
+@@ -1245,7 +1245,7 @@ install_uv() {
+                 echo "wget command not found. Please install wget first." >&2
+                 exit 1
+             fi
+-            
++
+             # If uv already exists in ~/.local/bin, use it
+             if [ -f ~/.local/bin/uv ]; then
+                 echo "uv already exists in ~/.local/bin. Using it..."
+@@ -1899,7 +1899,7 @@ EOF
+ )
+     cp -r "$VENV_DIR/lib/python${py_major_minor}/site-packages/openpi/models_pytorch/transformers_replace/"* \
+         "$VENV_DIR/lib/python${py_major_minor}/site-packages/transformers/"
+-    
++
+     bash $SCRIPT_DIR/embodied/download_assets.sh --assets openpi
+     # rlinf-openpi pulls rlinf-transformer-openpi (a transformers 4.53 fork) into
+     # the same package dir as the stock transformers, so two distributions claim
+@@ -2476,7 +2476,7 @@ install_behavior_env() {
+     pushd "$behavior_dir" >/dev/null
+     UV_LINK_MODE=hardlink ./setup.sh --omnigibson --bddl --joylo --confirm-no-conda --accept-nvidia-eula --use-uv
+     # OmniGibson's eval deps need another commit of lerobot, which is in conflict with which rlinf needs.
+-    # We actually does not use OmniGibson's lerobot deps, so just install other deps in OmniGibson's eval deps. 
++    # We actually does not use OmniGibson's lerobot deps, so just install other deps in OmniGibson's eval deps.
+     uv pip install "dm_tree>=0.1.9" "hydra-core>=1.3.2" "websockets>=15.0.1" "msgpack>=1.1.0" "gspread>=6.2.1" "open3d>=0.19.0" av "numpy<2"
+     popd >/dev/null
+     uv pip uninstall flash-attn || true
+@@ -2522,7 +2522,7 @@ install_polaris_env() {
+     uv pip install "flatdict==4.0.1" --no-build-isolation
+     uv pip install sympy==1.13.3
+     uv pip install -e "$polaris_dir"
+-    
++
+     python - <<'EOF'
+ import isaacsim
+ EOF
+@@ -2547,7 +2547,7 @@ install_isaaclab_env() {
+ install_robocasa_env() {
+     local robocasa_dir
+     robocasa_dir=$(clone_or_reuse_repo ROBOCASA_PATH "$VENV_DIR/robocasa" https://github.com/RLinf/robocasa.git)
+-    
++
+     uv pip install -e "$robocasa_dir"
+     uv pip install protobuf==6.33.0
+     python -m robocasa.scripts.setup_macros
+@@ -2687,7 +2687,9 @@ install_robotwin_env() {
+     }
+     cuda_major="${cuda_mm%% *}"
+     cuda_minor="${cuda_mm##* }"
+-    if [ "$cuda_major" -gt 12 ] || { [ "$cuda_major" -eq 12 ] && [ "$cuda_minor" -ge 8 ]; }; then
++    if [ -n "${TORCH_CUDA_ARCH_LIST:-}" ]; then
++        echo "Using caller-provided TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}"
++    elif [ "$cuda_major" -gt 12 ] || { [ "$cuda_major" -eq 12 ] && [ "$cuda_minor" -ge 8 ]; }; then
+         # Include Blackwell support for CUDA 12.8+
+         export TORCH_CUDA_ARCH_LIST="7.0;8.0;9.0;10.0"
+     else
+@@ -2698,7 +2700,9 @@ install_robotwin_env() {
+ 
+     uv pip install git+${GITHUB_PREFIX}https://github.com/facebookresearch/pytorch3d.git@v0.7.9  --no-build-isolation
+     uv pip install warp-lang==1.11.1
+-    uv pip install git+${GITHUB_PREFIX}https://github.com/NVlabs/curobo.git  --no-build-isolation
++    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NVIDIA_CUROBO=0.7.8 \
++        uv pip install git+${GITHUB_PREFIX}https://github.com/NVlabs/curobo.git@v0.7.8 \
++        --no-build-isolation
+ 
+     # patch sapien and mplib for robotwin
+     SAPIEN_LOCATION=$(uv pip show sapien | grep 'Location' | awk '{print $2}')/sapien
+@@ -2707,7 +2711,7 @@ install_robotwin_env() {
+     # ----------- before -----------
+     # 667         with open(urdf_file, "r") as f:
+     # 668             urdf_string = f.read()
+-    # 669 
++    # 669
+     # 670         if srdf_file is None:
+     # 671             srdf_file = urdf_file[:-4] + "srdf"
+     # 672         if os.path.isfile(srdf_file):
+@@ -2716,7 +2720,7 @@ install_robotwin_env() {
+     # ----------- after  -----------
+     # 667         with open(urdf_file, "r", encoding="utf-8") as f:
+     # 668             urdf_string = f.read()
+-    # 669 
++    # 669
+     # 670         if srdf_file is None:
+     # 671             srdf_file = urdf_file[:-4] + ".srdf"
+     # 672         if os.path.isfile(srdf_file):
+@@ -2729,7 +2733,7 @@ install_robotwin_env() {
+     # ----------- before -----------
+     # 807             if np.linalg.norm(delta_twist) < 1e-4 or collide or not within_joint_limit:
+     # 808                 return {"status": "screw plan failed"}
+-    # ----------- after  ----------- 
++    # ----------- after  -----------
+     # 807             if np.linalg.norm(delta_twist) < 1e-4 or not within_joint_limit:
+     # 808                 return {"status": "screw plan failed"}
+     PLANNER=$MPLIB_LOCATION/planner.py
+@@ -2824,9 +2828,9 @@ install_opensora_world_model() {
+     # Clone opensora repository
+     local opensora_dir
+     opensora_dir=$(clone_or_reuse_repo OPENSORA_PATH "$VENV_DIR/opensora" ${GITHUB_PREFIX}https://github.com/RLinf/opensora.git)
+-    
++
+     uv pip install -e "$opensora_dir"
+-    
++
+     # xformers embeds the torch version in its local label; 0.0.35 ships
+     # wheels for torch 2.11. Install it against the resolved torch build.
+     uv pip install "xformers==0.0.35"
+@@ -2866,7 +2870,7 @@ install_roboverse_env() {
+     uv pip install git+${GITHUB_PREFIX}https://github.com/facebookresearch/pytorch3d.git@v0.7.9 --no-build-isolation
+     uv pip install -e "${roboverse_dir}[sapien3]"
+     uv pip install -e "${roboverse_dir}[genesis]"
+-    
++
+     local pyroki_dir
+     pyroki_dir=$(clone_or_reuse_repo PYROKI_PATH "$roboverse_dir/pyroki" https://github.com/chungmin99/pyroki.git)
+     uv pip install -e "$pyroki_dir"
+@@ -3081,8 +3085,8 @@ main() {
+                 dexbotic)
+                     install_dexbotic_model
+                     ;;
+-                lingbotvla)                  
+-                    install_lingbot_vla_model 
++                lingbotvla)
++                    install_lingbot_vla_model
+                     ;;
+                 abot_m0)
+                     install_abot_m0_model
+diff --git a/rlinf/envs/robotwin/robotwin_env.py b/rlinf/envs/robotwin/robotwin_env.py
+index f8a4452f3c2a0b782173da3d8ab3244810f7177b..a3929512a483f2891a63e736a3bf789797d37489 100644
+--- a/rlinf/envs/robotwin/robotwin_env.py
++++ b/rlinf/envs/robotwin/robotwin_env.py
+@@ -149,6 +149,20 @@ class RoboTwinEnv(gym.Env):
+         episode_info["return"] = self.returns.clone()
+         episode_info["episode_len"] = self.elapsed_steps.clone()
+         episode_info["reward"] = episode_info["return"] / episode_info["episode_len"]
++        for key, value in infos.items():
++            if not key.startswith("panthera_"):
++                continue
++            metric = torch.as_tensor(
++                np.asarray(value, dtype=np.float32).reshape(-1),
++                device=self.device,
++                dtype=torch.float32,
++            )
++            if metric.numel() != self.num_envs:
++                raise ValueError(
++                    f"{key} must contain one scalar per environment; "
++                    f"got {metric.numel()} for {self.num_envs} environments"
++                )
++            episode_info[key] = metric
+         infos["episode"] = episode_info
+         return infos
+ 
+@@ -201,6 +215,7 @@ class RoboTwinEnv(gym.Env):
+             "wrist_images": batch_wrist_images,
+             "states": batch_states,
+             "task_descriptions": batch_instructions,
++            "reset_flags": torch.zeros(self.num_envs, dtype=torch.bool),
+         }
+ 
+         return extracted_obs
+@@ -216,25 +231,55 @@ class RoboTwinEnv(gym.Env):
+         else:
+             return reward
+ 
+-    def _cal_chunk_rewards(self, step_reward, chunk_step, terminations, infos):
+-        n_steps_to_run = np.array(
+-            [[0] for i in range(self.num_envs)]
+-        )  # infos.get("n_steps_to_run", np.array([[0] for i in range(self.num_envs)]))
+-
+-        n_steps_to_run = torch.as_tensor(
+-            np.array(n_steps_to_run).reshape(-1), device=self.device
++    def _executed_steps(self, infos, chunk_step):
++        """Return the number of commands actually consumed in each chunk.
++
++        RoboTwin currently consumes the complete TOPP path unless a task
++        explicitly reports an early stop.  Keeping this field explicit avoids
++        silently assigning terminal reward to an action that never ran.
++        """
++        reported = infos.get("executed_steps") if isinstance(infos, dict) else None
++        if reported is None:
++            reported = np.full(self.num_envs, chunk_step, dtype=np.int64)
++        steps = torch.as_tensor(
++            np.asarray(reported).reshape(-1), device=self.device, dtype=torch.long
+         )
++        if steps.numel() != self.num_envs:
++            raise ValueError("executed_steps must contain one value per environment")
++        return steps.clamp_(1, chunk_step)
++
++    def _cal_chunk_rewards(
++        self, step_reward, chunk_step, terminations, executed_steps, infos
++    ):
+         chunk_rewards = torch.zeros(self.num_envs, chunk_step, device=self.device)
++        reported_step_rewards = (
++            infos.get("step_rewards") if isinstance(infos, dict) else None
++        )
++        if reported_step_rewards is not None:
++            if len(reported_step_rewards) != self.num_envs:
++                raise ValueError(
++                    "step_rewards must contain one sequence per environment"
++                )
++            for env_id, reported in enumerate(reported_step_rewards):
++                values = np.asarray(reported, dtype=np.float32).reshape(-1)
++                count = int(executed_steps[env_id].item())
++                if len(values) < count:
++                    raise ValueError(
++                        "step_rewards is shorter than executed_steps for "
++                        f"environment {env_id}: {len(values)} < {count}"
++                    )
++                chunk_rewards[env_id, :count] = torch.as_tensor(
++                    values[:count], device=self.device
++                )
++            return chunk_rewards
+         for env_id in range(self.num_envs):
+-            steps_left = n_steps_to_run[env_id]
+             reward = step_reward[env_id]
+-            start_idx = chunk_step - steps_left - 1
+-
+-            if terminations[env_id] and start_idx > 0:
++            terminal_index = int(executed_steps[env_id].item()) - 1
++            if terminations[env_id]:
+                 if self.use_rel_reward:
+-                    chunk_rewards[env_id, start_idx] = reward
++                    chunk_rewards[env_id, terminal_index] = reward
+                 else:
+-                    chunk_rewards[env_id, start_idx:] = reward
++                    chunk_rewards[env_id, terminal_index] = reward
+ 
+         return chunk_rewards
+ 
+@@ -255,6 +300,14 @@ class RoboTwinEnv(gym.Env):
+         self._reset_metrics(env_idx)
+ 
+         extracted_obs = self._extract_obs_image(raw_obs)
++        reset_flags = torch.zeros(self.num_envs, dtype=torch.bool)
++        if env_idx is None:
++            reset_flags[:] = True
++        else:
++            reset_indices = torch.as_tensor(env_idx, dtype=torch.long).reshape(-1)
++            if reset_indices.numel() > 0:
++                reset_flags[reset_indices] = True
++        extracted_obs["reset_flags"] = reset_flags
+ 
+         return extracted_obs, infos
+ 
+@@ -354,11 +407,12 @@ class RoboTwinEnv(gym.Env):
+                     device=self.device,
+                 )
+ 
++        executed_steps = self._executed_steps(infos, chunk_step)
+         chunk_rewards = self._cal_chunk_rewards(
+-            step_reward, chunk_step, terminations, infos
++            step_reward, chunk_step, terminations, executed_steps, infos
+         )
+ 
+-        self._elapsed_steps += chunk_actions.shape[1]
++        self._elapsed_steps += executed_steps
+         truncated = self._elapsed_steps >= self.cfg.max_episode_steps
+         if truncated.any():
+             truncations = torch.logical_or(truncated, truncations)
+@@ -378,10 +432,11 @@ class RoboTwinEnv(gym.Env):
+             )
+ 
+         chunk_terminations = torch.zeros((num_envs, chunk_step), dtype=bool)
+-        chunk_terminations[:, -1] = terminations
+-
+         chunk_truncations = torch.zeros((num_envs, chunk_step), dtype=bool)
+-        chunk_truncations[:, -1] = truncations
++        for env_id in range(num_envs):
++            terminal_index = int(executed_steps[env_id].item()) - 1
++            chunk_terminations[env_id, terminal_index] = terminations[env_id]
++            chunk_truncations[env_id, terminal_index] = truncations[env_id]
+ 
+         return (
+             obs_list,
+diff --git a/rlinf/models/embodiment/openvla_oft/official/__init__.py b/rlinf/models/embodiment/openvla_oft/official/__init__.py
+index a397e5abec170e0a567e0cc4dfece7fbcb7a4051..bf9a6d5f6e45cd611fa71a64c53fd7625a79a81b 100644
+--- a/rlinf/models/embodiment/openvla_oft/official/__init__.py
++++ b/rlinf/models/embodiment/openvla_oft/official/__init__.py
+@@ -43,10 +43,16 @@ def get_model(cfg: DictConfig, torch_dtype=torch.bfloat16):
+         OpenVLAOFTForRLActionPrediction,
+         OpenVLAOFTRLConfig,
+     )
++    from prismatic.models.action_heads import L1RegressionActionHead
+     from rlinf.models.embodiment.openvla_oft.openvla_utils import (
+         apply_film_to_vla,
++        find_checkpoint_file,
++        load_component_state_dict,
+         load_dataset_stats,
+     )
++    from rlinf.models.embodiment.openvla_oft.continuous_residual import (
++        SquashedGaussianResidualPolicy,
++    )
+ 
+     AutoConfig.register("openvla", OpenVLAOFTRLConfig)
+     AutoImageProcessor.register(OpenVLAOFTRLConfig, PrismaticImageProcessor)
+@@ -92,6 +98,56 @@ def get_model(cfg: DictConfig, torch_dtype=torch.bfloat16):
+         # Load proprio projector weights if available
+         vla.load_proprio_projector_weights(cfg.model_path)
+ 
++    if cfg.get("use_l1_regression", False):
++        action_head = L1RegressionActionHead(
++            input_dim=vla.llm_dim,
++            hidden_dim=vla.llm_dim,
++            action_dim=cfg.action_dim,
++        )
++        checkpoint_path = find_checkpoint_file(cfg.model_path, "action_head")
++        state_dict = load_component_state_dict(checkpoint_path)
++        action_head.load_state_dict(state_dict, strict=True)
++        action_head = action_head.to(dtype=torch_dtype)
++        action_head.eval()
++        vla.action_head = action_head
++        print(f"Loaded continuous L1 action head: {checkpoint_path}")
++
++        if cfg.get("continuous_rl", False):
++            execution_horizon = int(cfg.get("execution_horizon", 5))
++            if not 1 <= execution_horizon <= cfg.num_action_chunks:
++                raise ValueError(
++                    "execution_horizon must be between 1 and num_action_chunks"
++                )
++            # PPO is intentionally a residual adaptation of the already
++            # successful SFT policy.  Freezing the VLA and L1 head keeps the
++            # rollout prior stationary and makes the first RL smoke small
++            # small enough to run as a dedicated residual-policy experiment.
++            vla.requires_grad_(False)
++            vla.continuous_policy = SquashedGaussianResidualPolicy(
++                hidden_dim=vla.llm_dim,
++                action_dim=cfg.action_dim,
++                num_action_chunks=cfg.num_action_chunks,
++                variant=str(cfg.get("continuous_rl_variant", "c0")).lower(),
++                feature_dim=int(cfg.get("continuous_feature_dim", 256)),
++                history_dim=int(cfg.get("continuous_history_dim", 64)),
++                max_residual=float(cfg.get("continuous_max_residual", 0.25)),
++                initial_log_std=float(cfg.get("continuous_initial_log_std", -3.0)),
++                min_log_std=float(cfg.get("continuous_min_log_std", -5.0)),
++                max_log_std=float(cfg.get("continuous_max_log_std", -1.0)),
++            )
++            vla.continuous_execution_horizon = execution_horizon
++            vla.continuous_consistency_coef = float(
++                cfg.get("continuous_consistency_coef", 0.0)
++            )
++            vla.continuous_history_noise_std = float(
++                cfg.get("continuous_history_noise_std", 0.0)
++            )
++            vla.continuous_history_dropout_probability = float(
++                cfg.get("continuous_history_dropout_probability", 0.0)
++            )
++            if hasattr(vla, "value_head"):
++                vla.value_head.requires_grad_(True)
++
+     # If using FiLM, wrap the vision backbone to allow for infusion of language inputs
+     if cfg.use_film:
+         vla = apply_film_to_vla(vla, cfg)
+diff --git a/rlinf/models/embodiment/openvla_oft/official/openvla_oft_action_model.py b/rlinf/models/embodiment/openvla_oft/official/openvla_oft_action_model.py
+index b7d861af239519d63a19e9b35d8c8d1ce3f66b73..d495edba3fd668565a6f294dd989c288f82aeac2 100644
+--- a/rlinf/models/embodiment/openvla_oft/official/openvla_oft_action_model.py
++++ b/rlinf/models/embodiment/openvla_oft/official/openvla_oft_action_model.py
+@@ -30,6 +30,9 @@ from transformers.generation import TopKLogitsWarper
+ 
+ from rlinf.models.embodiment.base_policy import BasePolicy, ForwardType
+ from rlinf.models.embodiment.modules.value_head import ValueHead
++from rlinf.models.embodiment.openvla_oft.continuous_residual import (
++    overlap_consistency_loss,
++)
+ from rlinf.models.embodiment.openvla_oft.openvla_utils import (
+     find_checkpoint_file,
+     load_component_state_dict,
+@@ -411,6 +414,80 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+             last_hidden_states,
+         )
+ 
++    def _continuous_prediction(
++        self,
++        multimodal_embeddings,
++        multimodal_attention_mask,
++        multimodal_position_ids,
++        num_patches,
++        num_prompt_tokens,
++    ):
++        """Run the separately trained OpenVLA-OFT L1 action head."""
++        language_model_output = self.language_model(
++            input_ids=None,
++            attention_mask=multimodal_attention_mask,
++            position_ids=multimodal_position_ids,
++            past_key_values=None,
++            inputs_embeds=multimodal_embeddings,
++            labels=None,
++            use_cache=None,
++            output_attentions=False,
++            output_hidden_states=True,
++            return_dict=True,
++        )
++        last_hidden_states = language_model_output.hidden_states[-1]
++        batch_size = last_hidden_states.shape[0]
++        device = last_hidden_states.device
++        start_indices = (num_patches + num_prompt_tokens).unsqueeze(1)
++        position_offsets = torch.arange(
++            self.action_dim * self.num_action_chunks, device=device
++        ).unsqueeze(0)
++        seq_indices = start_indices + position_offsets
++        action_hidden_states = last_hidden_states[
++            torch.arange(batch_size, device=device).unsqueeze(-1), seq_indices, :
++        ]
++        normalized_actions = self.action_head.predict_action(action_hidden_states)
++        expected_shape = (
++            batch_size,
++            self.num_action_chunks,
++            self.action_dim,
++        )
++        if tuple(normalized_actions.shape) != expected_shape:
++            raise ValueError(
++                "continuous action head returned "
++                f"{tuple(normalized_actions.shape)}, expected {expected_shape}"
++            )
++        action_tokens = torch.zeros(
++            (batch_size, self.action_dim * self.num_action_chunks),
++            dtype=torch.long,
++            device=device,
++        )
++        return normalized_actions, action_hidden_states, action_tokens, last_hidden_states
++
++    def _continuous_history(self, batch_size, device, dtype, reset_flags=None):
++        expected = (batch_size, self.num_action_chunks, self.action_dim)
++        if (
++            not hasattr(self, "_continuous_previous_mean")
++            or tuple(self._continuous_previous_mean.shape) != expected
++        ):
++            self._continuous_previous_mean = torch.zeros(expected, device=device, dtype=dtype)
++            self._continuous_previous_action = torch.zeros(
++                (batch_size, self.action_dim), device=device, dtype=dtype
++            )
++            self._continuous_previous_valid = torch.zeros(
++                batch_size, device=device, dtype=torch.bool
++            )
++        if reset_flags is not None:
++            reset_flags = torch.as_tensor(reset_flags, device=device, dtype=torch.bool).reshape(-1)
++            if reset_flags.numel() != batch_size:
++                raise ValueError("reset_flags batch size does not match policy batch")
++            self._continuous_previous_valid[reset_flags] = False
++        return (
++            self._continuous_previous_mean,
++            self._continuous_previous_action,
++            self._continuous_previous_valid,
++        )
++
+     @torch.no_grad()
+     def predict_action_batch(
+         self,
+@@ -425,6 +502,8 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+     ) -> tuple[np.ndarray, dict[str, Any]]:
+         do_sample = kwargs.pop("do_sample")
+ 
++        reset_flags = None if env_obs is None else env_obs.get("reset_flags")
++
+         if env_obs is not None:
+             input_ids, attention_mask, pixel_values, proprio = self.prepare_inputs(
+                 env_obs
+@@ -465,8 +544,56 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+         if use_proprio:
+             num_patches += 1
+ 
+-        normalized_actions, action_logits, action_tokens, last_hidden_states = (
+-            self._discrete_prediction(
++        if hasattr(self, "action_head"):
++            sft_mean, action_hidden_states, action_tokens, last_hidden_states = (
++                self._continuous_prediction(
++                    multimodal_embeddings,
++                    multimodal_attention_mask,
++                    multimodal_position_ids,
++                    num_patches,
++                    num_prompt_tokens,
++                )
++            )
++            if hasattr(self, "continuous_policy"):
++                previous_mean, previous_action, previous_valid = self._continuous_history(
++                    input_ids.shape[0], sft_mean.device, sft_mean.dtype, reset_flags
++                )
++                policy_output = self.continuous_policy(
++                    action_hidden_states,
++                    sft_mean,
++                    previous_mean=previous_mean,
++                    previous_executed_action=previous_action,
++                    previous_valid=previous_valid,
++                    execution_horizon=self.continuous_execution_horizon,
++                )
++                normalized_actions_tensor, all_logprobs = self.continuous_policy.sample(
++                    policy_output, deterministic=not do_sample
++                )
++                horizon = self.continuous_execution_horizon
++                chunk_logprobs = all_logprobs[:, :horizon]
++                forward_inputs.update(
++                    {
++                        "continuous_actions": normalized_actions_tensor[:, :horizon],
++                        "previous_policy_mean": previous_mean.clone(),
++                        "previous_executed_action": previous_action.clone(),
++                        "previous_policy_valid": previous_valid.clone(),
++                    }
++                )
++                self._continuous_previous_mean = policy_output.mean_action.detach().clone()
++                self._continuous_previous_action = normalized_actions_tensor[
++                    :, horizon - 1
++                ].detach().clone()
++                self._continuous_previous_valid = torch.ones_like(previous_valid)
++                normalized_actions = normalized_actions_tensor.float().cpu().numpy()
++            else:
++                normalized_actions = sft_mean.float().cpu().numpy()
++                chunk_logprobs = torch.zeros(
++                    (input_ids.shape[0], self.num_action_chunks),
++                    dtype=pixel_values.dtype,
++                    device=pixel_values.device,
++                )
++        else:
++            normalized_actions, action_logits, action_tokens, last_hidden_states = self._discrete_prediction(
+                 multimodal_embeddings,
+                 multimodal_attention_mask,
+                 multimodal_position_ids,
+@@ -476,20 +603,18 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+                 temperature=kwargs["temperature"],
+                 top_k=kwargs["top_k"],
+             )
+-        )
++            logprobs_result = self._compute_logprobs_and_entropy(
++                action_logits=action_logits,
++                action_tokens=action_tokens,
++                compute_entropy=False,
++            )
++            chunk_logprobs = logprobs_result["logprobs"]
+ 
+         # Unnormalize predicted actions
+         actions = self._unnormalize_actions(normalized_actions, self.unnorm_key)
+         actions = actions.reshape(-1, self.num_action_chunks, self.action_dim)
+ 
+         # Compute chunk logprobs (and critic values)
+-        logprobs_result = self._compute_logprobs_and_entropy(
+-            action_logits=action_logits,
+-            action_tokens=action_tokens,
+-            compute_entropy=False,
+-        )
+-        chunk_logprobs = logprobs_result["logprobs"]
+-
+         chunk_actions = torch.as_tensor(
+             actions.reshape(-1, self.num_action_chunks, self.action_dim)
+         )
+@@ -497,6 +622,12 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+         chunk_values = None
+         if calulate_values:
+             chunk_values = self._compute_values(last_hidden_states)
++            if (
++                hasattr(self, "continuous_policy")
++                and chunk_values is not None
++                and chunk_values.shape[-1] == self.num_action_chunks
++            ):
++                chunk_values = chunk_values[:, : self.continuous_execution_horizon]
+         if chunk_values is None:
+             chunk_values = torch.zeros_like(chunk_logprobs[..., :1])
+ 
+@@ -597,7 +728,7 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+             attention_mask = forward_inputs["attention_mask"]
+             pixel_values = forward_inputs["pixel_values"]
+             proprio = forward_inputs["proprio"]
+-            action_tokens = forward_inputs["action_tokens"]
++            action_tokens = forward_inputs.get("action_tokens")
+ 
+         # Create fake labels tensor (needed for action mask)
+         labels = input_ids.clone()
+@@ -631,6 +762,8 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+ 
+         if compute_values:
+             output_hidden_states = True
++        if hasattr(self, "continuous_policy"):
++            output_hidden_states = True
+ 
+         # Forward pass through language model
+         outputs = self.language_model(
+@@ -661,6 +794,64 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BasePolicy)
+             start_indices + position_offsets
+         )  # Shape: [batch_size, action_dim * num_action_chunks]
+ 
++        if hasattr(self, "continuous_policy"):
++            last_hidden_states = outputs.hidden_states[-1]
++            action_hidden_states = last_hidden_states[
++                torch.arange(batch_size, device=device).unsqueeze(-1), seq_indices, :
++            ]
++            sft_mean = self.action_head.predict_action(action_hidden_states).detach()
++            previous_mean = forward_inputs["previous_policy_mean"]
++            previous_action = forward_inputs["previous_executed_action"]
++            previous_valid = forward_inputs["previous_policy_valid"]
++            policy_output = self.continuous_policy(
++                action_hidden_states,
++                sft_mean,
++                previous_mean=previous_mean,
++                previous_executed_action=previous_action,
++                previous_valid=previous_valid,
++                execution_horizon=self.continuous_execution_horizon,
++                perturb_history=self.training,
++                history_noise_std=self.continuous_history_noise_std,
++                history_dropout_probability=(
++                    self.continuous_history_dropout_probability
++                ),
++            )
++            continuous_actions = forward_inputs["continuous_actions"]
++            horizon = continuous_actions.shape[1]
++            logprobs = self.continuous_policy.log_prob(
++                continuous_actions,
++                policy_output,
++            )[:, :horizon]
++            entropy = -logprobs if compute_entropy else None
++            values = self._compute_values(last_hidden_states) if compute_values else None
++            if (
++                values is not None
++                and values.shape[-1] == self.num_action_chunks
++            ):
++                values = values[:, :horizon]
++
++            consistency = overlap_consistency_loss(
++                policy_output.mean_action,
++                previous_mean,
++                previous_valid,
++                execution_horizon=self.continuous_execution_horizon,
++                arm_dim=min(6, self.action_dim),
++            )
++            auxiliary_loss = (
++                consistency * self.continuous_consistency_coef
++                if self.continuous_policy.variant in {"c1", "c2"}
++                else consistency * 0.0
++            )
++            return {
++                "logprobs": logprobs,
++                "entropy": entropy,
++                "values": values,
++                "auxiliary_loss": auxiliary_loss,
++                "auxiliary_metrics": {
++                    "actor/chunk_overlap_loss": consistency.detach(),
++                },
++            }
++
+         logprobs = None
+         entropy = None
+         if compute_logprobs:
+diff --git a/rlinf/runners/embodied_runner.py b/rlinf/runners/embodied_runner.py
+index b6f15b6b5f769b451a3da77003aa53bc8a3b1b60..c9a4a1c9442d12c1f601ed0f6efca423aee00276 100644
+--- a/rlinf/runners/embodied_runner.py
++++ b/rlinf/runners/embodied_runner.py
+@@ -476,6 +476,40 @@ class EmbodiedRunner:
+         self.logger.info(f"Closed profiling window at step {step_idx}")
+ 
+     def run(self):
++        if self.cfg.runner.get("only_eval", False):
++            checkpoint_path = self.cfg.runner.get("ckpt_path", None)
++            frozen_sft_baseline = self.cfg.runner.get(
++                "eval_frozen_sft_baseline", False
++            )
++            if not checkpoint_path and not frozen_sft_baseline:
++                raise ValueError(
++                    "runner.only_eval requires either runner.ckpt_path or "
++                    "runner.eval_frozen_sft_baseline=true"
++                )
++            if checkpoint_path and frozen_sft_baseline:
++                raise ValueError(
++                    "checkpoint evaluation and frozen-SFT baseline evaluation "
++                    "are mutually exclusive"
++                )
++            if self.cfg.runner.get("val_check_interval", -1) <= 0:
++                raise ValueError(
++                    "runner.only_eval requires an enabled eval env"
++                )
++
++            start_time = time.time()
++            eval_metrics = self.evaluate()
++            eval_metrics = {f"eval/{key}": value for key, value in eval_metrics.items()}
++            self.metric_logger.log(data=eval_metrics, step=self.global_step)
++            self.print_metrics_table_async(
++                self.global_step,
++                1,
++                start_time,
++                eval_metrics,
++                self.global_step,
++            )
++            self._finish_run()
++            return
++
+         if self.cfg.runner.get("use_training_pipeline", False):
+             return self.run_pipeline()
+ 
+diff --git a/rlinf/scheduler/hardware/accelerators/nvidia_gpu.py b/rlinf/scheduler/hardware/accelerators/nvidia_gpu.py
+index f15d7d4a41670927465a547ffc0d599b0b6571b5..7e4f65815e8cafcca832e96438935874a2aaa269 100644
+--- a/rlinf/scheduler/hardware/accelerators/nvidia_gpu.py
++++ b/rlinf/scheduler/hardware/accelerators/nvidia_gpu.py
+@@ -389,6 +389,18 @@ class NvidiaGPUManager(AcceleratorManager):
+         Returns:
+             Dict[str, str]: A dictionary containing the accelerator environment variables.
+         """
++        # Placement ranks are local to the GPUs visible to the launcher.  Ray
++        # workers, however, interpret a newly assigned CUDA_VISIBLE_DEVICES
++        # against the physical host.  Translate local ranks back through the
++        # launcher's mask so a parent mask such as ``1,2`` remains physical
++        # GPUs 1 and 2 instead of being rewritten to physical GPUs 0 and 1.
++        parent_visible = NvidiaGPUManager.get_visible_devices()
++        if parent_visible:
++            local_ranks = [int(value) for value in visible_accelerators]
++            if all(0 <= rank < len(parent_visible) for rank in local_ranks):
++                visible_accelerators = [
++                    str(parent_visible[rank]) for rank in local_ranks
++                ]
+         env_vars = {}
+         visible_accelerators_str = ",".join(visible_accelerators)
+ 
+diff --git a/rlinf/workers/actor/embodied_fsdp_actor_worker.py b/rlinf/workers/actor/embodied_fsdp_actor_worker.py
+index 21f34b40ddb6ead9545bd80c0667a04fd755aeb5..3d18263767cd347ef2b27550bbf98468a315b507 100644
+--- a/rlinf/workers/actor/embodied_fsdp_actor_worker.py
++++ b/rlinf/workers/actor/embodied_fsdp_actor_worker.py
+@@ -692,6 +692,33 @@ class EmbodiedFSDPActor(FSDPModelManager, Worker):
+         if self.enable_sft_co_train:
+             loss = self._train_sft_epoch(metrics_data, loss)
+ 
++        auxiliary_loss = output_dict.get("auxiliary_loss")
++        if auxiliary_loss is not None:
++            loss = loss + auxiliary_loss
++            metrics_data["actor/auxiliary_loss"] = auxiliary_loss.detach().item()
++        for name, value in output_dict.get("auxiliary_metrics", {}).items():
++            metrics_data[name] = (
++                value.detach().item() if isinstance(value, torch.Tensor) else float(value)
++            )
++
++        # Never let a numerically invalid rollout silently produce and save a
++        # poisoned checkpoint.  The release arena can legitimately drive the
++        # frozen SFT prior to exact normalized bounds, so this gate covers the
++        # policy density, critic and composed objective before backward.
++        for name in ("logprobs", "entropy", "values"):
++            tensor = output_dict.get(name)
++            if tensor is None:
++                continue
++            finite = torch.isfinite(tensor)
++            if not finite.all():
++                invalid = int((~finite).sum().detach().cpu())
++                raise FloatingPointError(
++                    f"non-finite continuous PPO {name}: "
++                    f"{invalid}/{tensor.numel()} values"
++                )
++        if not torch.isfinite(loss).all():
++            raise FloatingPointError("continuous PPO total loss is non-finite")
++
+         loss /= self.gradient_accumulation
+         with backward_ctx:
+             self.grad_scaler.scale(loss).backward()
+diff --git a/rlinf/workers/env/env_worker.py b/rlinf/workers/env/env_worker.py
+index bf4bf3649a47087ec19367fff87322df08906ebb..e13fe3ffe595b0443641d3fb4e8ad0d7777c1f33 100644
+--- a/rlinf/workers/env/env_worker.py
++++ b/rlinf/workers/env/env_worker.py
+@@ -14,6 +14,7 @@
+ 
+ import asyncio
+ import gc
++import os
+ from collections import defaultdict
+ from typing import Any
+ 
+@@ -140,7 +141,28 @@ class EnvWorker(Worker):
+             self.train_batch_size = self.cfg.env.train.total_num_envs // self.stage_num
+         else:
+             self.enable_online_lerobot = False
++        self.train_execution_horizon = self.model_cfg.num_action_chunks
++        if self.enable_train:
++            self.train_execution_horizon = int(
++                self.model_cfg.get("execution_horizon", self.model_cfg.num_action_chunks)
++            )
++            if not 1 <= self.train_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "actor.model.execution_horizon must be within the action chunk"
++                )
+         if self.enable_eval:
++            self.eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= self.eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{self.eval_execution_horizon}"
++                )
+             self.eval_num_envs_per_stage = (
+                 self.cfg.env.eval.total_num_envs // self._world_size // self.stage_num
+             )
+@@ -149,14 +171,16 @@ class EnvWorker(Worker):
+         if self.enable_train:
+             self.n_train_chunk_steps = (
+                 self.cfg.env.train.max_steps_per_rollout_epoch
+-                // self.model_cfg.num_action_chunks
+-            )
++                + self.train_execution_horizon
++                - 1
++            ) // self.train_execution_horizon
+         self.n_eval_chunk_steps = 0
+         if self.enable_eval:
+             self.n_eval_chunk_steps = (
+                 self.cfg.env.eval.max_steps_per_rollout_epoch
+-                // self.model_cfg.num_action_chunks
+-            )
++                + self.eval_execution_horizon
++                - 1
++            ) // self.eval_execution_horizon
+         self.actor_split_num = (
+             1 if not self.enable_train else self.get_actor_split_num()
+         )
+@@ -485,6 +509,7 @@ class EnvWorker(Worker):
+             chunk_actions["actions"] = exec_actions
+         else:
+             chunk_actions = exec_actions
++        chunk_actions = chunk_actions[:, : self.train_execution_horizon]
+         env_info = {}
+ 
+         obs_list, chunk_rewards, chunk_terminations, chunk_truncations, infos_list = (
+@@ -570,6 +595,7 @@ class EnvWorker(Worker):
+             wm_env_type=self.cfg.env.eval.get("wm_env_type", None),
+             env_cfg=self.cfg.env.eval,
+         )
++        chunk_actions = chunk_actions[:, : self.eval_execution_horizon]
+         env_info = {}
+ 
+         obs_list, _, chunk_terminations, chunk_truncations, infos_list = (
+@@ -901,7 +927,7 @@ class EnvWorker(Worker):
+             return (
+                 torch.zeros((self.train_num_envs_per_stage,), dtype=bool)
+                 .unsqueeze(1)
+-                .repeat(1, self.model_cfg.num_action_chunks)
++                .repeat(1, self.train_execution_horizon)
+             )
+ 
+         env_outputs: list[EnvOutput] = []
+diff --git a/rlinf/workers/rollout/hf/huggingface_worker.py b/rlinf/workers/rollout/hf/huggingface_worker.py
+index 3d0f752b36ccac810fd3254c0d04c7c06773dd94..e8d017d3408101bb3f049a790833e6a4dbb5eebd 100644
+--- a/rlinf/workers/rollout/hf/huggingface_worker.py
++++ b/rlinf/workers/rollout/hf/huggingface_worker.py
+@@ -15,6 +15,7 @@
+ import asyncio
+ import copy
+ import gc
++import os
+ import time
+ from typing import Any, Callable, Literal, Optional
+ 
+@@ -100,18 +101,41 @@ class MultiStepRolloutWorker(Worker):
+ 
+         self.enable_cuda_graph = cfg.rollout.get("enable_cuda_graph", False)
+ 
+-        self.n_train_chunk_steps = (
+-            cfg.env.train.max_steps_per_rollout_epoch
+-            // self.model_cfg.num_action_chunks
+-            if self.enable_train
+-            else 0
+-        )
++        self.n_train_chunk_steps = 0
++        if self.enable_train:
++            train_execution_horizon = int(
++                self.model_cfg.get(
++                    "execution_horizon", self.model_cfg.num_action_chunks
++                )
++            )
++            if not 1 <= train_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "actor.model.execution_horizon must be within the action chunk"
++                )
++            self.n_train_chunk_steps = (
++                cfg.env.train.max_steps_per_rollout_epoch
++                + train_execution_horizon
++                - 1
++            ) // train_execution_horizon
+         self.n_eval_chunk_steps = 0
+         if self.enable_eval:
++            eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{eval_execution_horizon}"
++                )
+             self.n_eval_chunk_steps = (
+                 cfg.env.eval.max_steps_per_rollout_epoch
+-                // self.model_cfg.num_action_chunks
+-            )
++                + eval_execution_horizon
++                - 1
++            ) // eval_execution_horizon
+         self.collect_prev_infos = self.cfg.rollout.get("collect_prev_infos", True)
+         self.collect_final_values = self.cfg.rollout.get("collect_final_values", True)
+         self.version = 0
+diff --git a/rlinf/workers/rollout/sglang/sglang_embodied_worker.py b/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
+index 61f16bf0bb8b4a1a9060962221951a702824baad..f82793dd855aea34765a046da5974310e2b12f3d 100644
+--- a/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
++++ b/rlinf/workers/rollout/sglang/sglang_embodied_worker.py
+@@ -27,6 +27,7 @@ host its own HTTP server (the agent path uses
+ :class:`SGLangAgentWorkerWithHTTPServer`).
+ """
+ 
++import os
+ from typing import Any, Literal, Optional
+ 
+ import torch
+@@ -76,9 +77,23 @@ class SGLangEmbodiedWorker(Worker):
+         )
+         self.eval_rollout_epoch = int(eval_env_cfg.rollout_epoch) if eval_env_cfg else 1
+         if eval_env_cfg is not None:
+-            self.n_eval_chunk_steps = int(
+-                eval_env_cfg.max_steps_per_rollout_epoch
+-            ) // int(self.model_cfg.num_action_chunks)
++            eval_execution_horizon = int(
++                os.environ.get(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON",
++                    self.model_cfg.num_action_chunks,
++                )
++            )
++            if not 1 <= eval_execution_horizon <= self.model_cfg.num_action_chunks:
++                raise ValueError(
++                    "PANTHERA_EVAL_EXECUTION_HORIZON must be between 1 and "
++                    f"{self.model_cfg.num_action_chunks}, got "
++                    f"{eval_execution_horizon}"
++                )
++            self.n_eval_chunk_steps = (
++                int(eval_env_cfg.max_steps_per_rollout_epoch)
++                + eval_execution_horizon
++                - 1
++            ) // eval_execution_horizon
+         else:
+             self.n_eval_chunk_steps = 0
+ 

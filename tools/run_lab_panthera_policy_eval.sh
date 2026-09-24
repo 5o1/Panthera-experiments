@@ -18,10 +18,7 @@ eval_config_name="${PANTHERA_EVAL_CONFIG_NAME:-robotwin_panthera_cylinder_openvl
 env_source="${PANTHERA_EVAL_ENV_SOURCE:-${overlay_root}/config/env/robotwin_place_cylinder_in_groove.yaml}"
 eval_source="${PANTHERA_EVAL_CONFIG_SOURCE:-${overlay_root}/evaluations/robotwin_panthera_cylinder_openvlaoft_eval.yaml}"
 seed_source="${PANTHERA_EVAL_SEED_SOURCE:-${overlay_root}/seeds/panthera_cylinder_eval_seeds.json}"
-openvla_l1_eval_patch="${workspace}/overlays/rlinf/patches/rlinf_openvla_oft_l1_eval.patch"
-cuda_visible_subset_patch="${workspace}/overlays/rlinf/patches/rlinf_cuda_visible_subset.patch"
-eval_execution_horizon_patch="${workspace}/overlays/rlinf/patches/rlinf_eval_execution_horizon.patch"
-eval_rollout_execution_horizon_patch="${workspace}/overlays/rlinf/patches/rlinf_eval_rollout_execution_horizon.patch"
+rlinf_runtime_patch="${workspace}/overlays/rlinf/patches/rlinf_panthera_runtime.patch"
 openvla_constants_patch="${workspace}/patches/openvla_oft_panthera_constants.patch"
 openvla_site_packages="${workspace}/runtime/rlinf/.venv/lib/python3.11/site-packages"
 env_target="${PANTHERA_EVAL_ENV_TARGET:-${rlinf_root}/examples/embodiment/config/env/robotwin_place_cylinder_in_groove.yaml}"
@@ -224,10 +221,7 @@ for command_name in flock git patch timeout nvidia-smi; do
 done
 for required in \
   "$activation_script" "$env_source" "$eval_source" "$seed_source" "$vector_action_patch" \
-  "$openvla_l1_eval_patch" \
-  "$cuda_visible_subset_patch" \
-  "$eval_execution_horizon_patch" \
-  "$eval_rollout_execution_horizon_patch" \
+  "$rlinf_runtime_patch" \
   "$openvla_constants_patch" \
   "$task_source" "$instruction_source" \
   "${model_root}/config.json" "${model_root}/dataset_statistics.json"; do
@@ -286,46 +280,17 @@ if ! find "$model_root" -maxdepth 2 -type f -name 'action_head--*_checkpoint.pt'
   exit 1
 fi
 
-if git -C "$rlinf_root" apply --reverse --check "$openvla_l1_eval_patch" 2>/dev/null; then
-  echo "RLinf OpenVLA-OFT 连续 L1 动作头评测补丁已存在。"
-elif git -C "$rlinf_root" apply --check "$openvla_l1_eval_patch"; then
-  git -C "$rlinf_root" apply "$openvla_l1_eval_patch"
-  echo "已应用 RLinf OpenVLA-OFT 连续 L1 动作头评测补丁。"
+if git -C "$rlinf_root" apply --reverse --check "$rlinf_runtime_patch" 2>/dev/null; then
+  echo "RLinf Panthera 运行时补丁已存在。"
+elif git -C "$rlinf_root" apply --check "$rlinf_runtime_patch"; then
+  git -C "$rlinf_root" apply "$rlinf_runtime_patch"
+  echo "已应用 RLinf Panthera 运行时补丁。"
 else
-  echo "错误：RLinf OpenVLA-OFT 连续 L1 动作头评测补丁无法安全应用。" >&2
-  exit 1
-fi
-
-if git -C "$rlinf_root" apply --reverse --check "$cuda_visible_subset_patch" 2>/dev/null; then
-  echo "RLinf CUDA 子集物理编号补丁已存在。"
-elif git -C "$rlinf_root" apply --check "$cuda_visible_subset_patch"; then
-  git -C "$rlinf_root" apply "$cuda_visible_subset_patch"
-  echo "已应用 RLinf CUDA 子集物理编号补丁。"
-else
-  echo "错误：RLinf CUDA 子集物理编号补丁无法安全应用。" >&2
-  exit 1
-fi
-if git -C "$rlinf_root" apply --reverse --check "$eval_execution_horizon_patch" 2>/dev/null; then
-  echo "RLinf 评测执行视野补丁已存在。"
-elif git -C "$rlinf_root" apply --check "$eval_execution_horizon_patch"; then
-  git -C "$rlinf_root" apply "$eval_execution_horizon_patch"
-  echo "已应用 RLinf 评测执行视野补丁。"
-else
-  echo "错误：RLinf 评测执行视野补丁无法安全应用。" >&2
+  echo "错误：RLinf Panthera 运行时补丁无法安全应用；请从固定上游重新装配运行树。" >&2
   exit 1
 fi
 hf_worker="${rlinf_root}/rlinf/workers/rollout/hf/huggingface_worker.py"
 sglang_worker="${rlinf_root}/rlinf/workers/rollout/sglang/sglang_embodied_worker.py"
-if grep -Fq 'eval_execution_horizon = int(' "$hf_worker" \
-  && grep -Fq 'eval_execution_horizon = int(' "$sglang_worker"; then
-  echo "RLinf rollout worker 执行视野补丁已存在。"
-elif git -C "$rlinf_root" apply --check "$eval_rollout_execution_horizon_patch"; then
-  git -C "$rlinf_root" apply "$eval_rollout_execution_horizon_patch"
-  echo "已应用 RLinf rollout worker 执行视野补丁。"
-else
-  echo "错误：RLinf rollout worker 执行视野补丁无法安全应用。" >&2
-  exit 1
-fi
 if ! grep -Fq 'eval_execution_horizon = int(' "$hf_worker" \
   || ! grep -Fq 'eval_execution_horizon = int(' "$sglang_worker"; then
   echo "错误：rollout worker 执行视野补丁源码标记不完整。" >&2

@@ -109,7 +109,7 @@ class TemporalEnsemble:
     verbatim, so every commanded step carried the model's full per-step output
     noise.  Measured on the single-trajectory overfit model, episode 2: the
     expert holds still for 26.9% of the trajectory -- four settling blocks
-    around the gripper closing at step 231, opening at 801, and at each end --
+    around the gripper midpoint crossings at steps 231 and 801, and at each end --
     and moves 5.23 mrad per step in between.  The policy held still for 0.0% of
     its rollout and moved 13.71 mrad per step, peaking at 76.76 against the
     expert's 20.06, for 168.2 rad of joint travel against 10.9.  It never

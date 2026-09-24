@@ -117,7 +117,7 @@ def _action_chunks(actions: np.ndarray, starts, action_chunk: int) -> np.ndarray
 
 
 def _gripper_transitions(actions: np.ndarray, threshold: float = 0.5) -> list[dict]:
-    """Locate expert close/open transitions on the retained 50 Hz grid."""
+    """Locate diagnostic midpoint crossings, not starts of continuous motion."""
     gripper = np.asarray(actions, dtype=np.float64)[:, 6]
     wide = gripper >= threshold
     rows = np.flatnonzero(wide[1:] != wide[:-1]) + 1

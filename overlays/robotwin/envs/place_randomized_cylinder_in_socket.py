@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 
+import h5py
 import numpy as np
 import sapien
 from scipy.interpolate import CubicSpline
@@ -152,6 +153,7 @@ class place_randomized_cylinder_in_socket(place_vertical_cylinder_in_groove):
         self.joint_smoothing_audit = []
         self.joint_retime_audit = []
         self.grasp_route_selection_audit = []
+        self._policy_release_solver_configured = False
         linear_damping = float(
             os.environ.get(
                 "PANTHERA_V2_CYLINDER_LINEAR_DAMPING",
@@ -215,6 +217,72 @@ class place_randomized_cylinder_in_socket(place_vertical_cylinder_in_groove):
         self.physics_parameters["cylinder_max_depenetration_velocity_mps"] = (
             max_depenetration_velocity
         )
+        self._apply_rl_warm_start()
+
+    def _apply_rl_warm_start(self) -> None:
+        """Replay an expert prefix to build a deterministic release arena.
+
+        The prefix initializes simulator state only.  It is neither returned
+        as policy observation history nor scored as an RL transition.
+        """
+        config = self.task_randomization.get("rl_warm_start", {}) or {}
+        if not bool(config.get("enabled", False)):
+            self.rl_warm_start_audit = {"enabled": False}
+            return
+        trajectory_path = Path(str(config.get("trajectory_path", "")))
+        prefix_actions = int(config.get("prefix_actions", 0))
+        if not trajectory_path.is_file():
+            raise FileNotFoundError(
+                f"RL warm-start trajectory does not exist: {trajectory_path}"
+            )
+        with h5py.File(trajectory_path, "r") as handle:
+            if "joint_action/vector" not in handle:
+                raise ValueError("RL warm-start trajectory has no joint_action/vector")
+            dataset = handle["joint_action/vector"]
+            if not 1 <= prefix_actions <= len(dataset):
+                raise ValueError(
+                    f"prefix_actions must be in [1, {len(dataset)}], got {prefix_actions}"
+                )
+            actions = np.asarray(dataset[:prefix_actions], dtype=float)
+        if actions.ndim != 2 or actions.shape[1] != 7 or not np.all(np.isfinite(actions)):
+            raise ValueError("RL warm-start actions must be a finite [N, 7] array")
+
+        measured = self._actual_robot_state()
+        previous_arm = np.asarray(measured["arm_qpos"], dtype=float)
+        previous_gripper = float(measured["gripper_qpos"])
+        physics_steps_per_action = 5
+        policy_period_s = physics_steps_per_action / 250.0
+        for target in actions:
+            target_arm = np.asarray(target[:6], dtype=float)
+            target_gripper = float(np.clip(target[6], 0.0, 1.0))
+            target_velocity = (target_arm - previous_arm) / policy_period_s
+            if (
+                previous_gripper < 0.5 <= target_gripper
+                and not getattr(self, "_policy_release_solver_configured", False)
+            ):
+                self._configure_release_contact_solver()
+                self._policy_release_solver_configured = True
+            for _ in range(physics_steps_per_action):
+                self.robot.set_arm_joints(target_arm, target_velocity, "left")
+                self.robot.set_gripper(target_gripper, "left")
+                self._step_scene()
+            previous_arm = target_arm
+            previous_gripper = target_gripper
+
+        # The replay prefix is reset state construction, not part of the RL
+        # episode's action budget or reward history.
+        self.take_action_cnt = 0
+        self.eval_success = False
+        self._terminal_success = None
+        self._rl_previous_action = None
+        self.reset_policy_reward_state()
+        self.rl_warm_start_audit = {
+            "enabled": True,
+            "trajectory_path": str(trajectory_path),
+            "prefix_actions": prefix_actions,
+            "physics_steps": prefix_actions * physics_steps_per_action,
+            "final_gripper_target": previous_gripper,
+        }
 
     def _camera_visibility_keypoints(self) -> tuple[list[str], np.ndarray]:
         """Return conservative robot, object and task-volume visibility points."""
