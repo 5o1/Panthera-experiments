@@ -38,6 +38,21 @@ DEFAULT_TASK = "place_randomized_cylinder_in_socket"
 Predict = Callable[[np.ndarray, np.ndarray, str, int], np.ndarray]
 
 
+def classify_completion(
+    success: bool, executed_actions: int, expert_action_budget: int
+) -> str:
+    """Classify success without confusing the expert deadline with a timeout."""
+    if expert_action_budget <= 0:
+        raise ValueError("expert_action_budget must be positive")
+    if executed_actions < 0:
+        raise ValueError("executed_actions must be nonnegative")
+    if not success:
+        return "failure"
+    if executed_actions <= expert_action_budget:
+        return "on_time_success"
+    return "delayed_success"
+
+
 def summarize_inference_timing(
     queries: list[dict], executed_actions: int, control_hz: float
 ) -> dict:
@@ -398,9 +413,21 @@ def _run(episode_id: int) -> dict:
         case["parity"] = parity_report
     if offline_validation is not None:
         case["offline_validation"] = offline_validation
-    case["gate_success"] = bool(
-        case.get("success") and (parity_report is None or parity_report.get("passed"))
+    completion_class = classify_completion(
+        bool(case.get("success")),
+        int(case.get("executed_actions", 0)),
+        int(config["expert_action_budget"]),
     )
+    parity_passed = parity_report is None or bool(parity_report.get("passed"))
+    case["expert_action_budget"] = int(config["expert_action_budget"])
+    case["evaluation_action_budget"] = int(config["max_actions"])
+    case["completion_class"] = completion_class
+    case["on_time_success"] = completion_class == "on_time_success"
+    case["delayed_success"] = completion_class == "delayed_success"
+    case["diagnostic_success"] = bool(case.get("success") and parity_passed)
+    # The primary gate keeps the historical expert-duration contract.  The
+    # longer rollout only diagnoses policies that solve the task more slowly.
+    case["gate_success"] = bool(case["on_time_success"] and parity_passed)
     return case
 
 
@@ -474,8 +501,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--execution-horizon", type=int, default=20)
+    parser.add_argument(
+        "--expert-action-budget",
+        type=int,
+        default=0,
+        help="0 uses the recorded expert trajectory length as the on-time gate",
+    )
     parser.add_argument("--max-actions", type=int, default=0,
-                        help="0 takes the budget the dataset declares it needs")
+                        help="0 stops at the expert budget; pass a larger diagnostic timeout")
     parser.add_argument("--source", choices=("policy", "expert"), default="policy")
     parser.add_argument("--trace", action="store_true")
     parser.add_argument("--workers", type=int, default=1)
@@ -487,7 +520,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     cli = parse_args()
     dataset = open_dataset(cli.dataset_root)
-    budget = cli.max_actions or dataset.contract.required_action_budget
+    expert_budget = cli.expert_action_budget or dataset.contract.required_action_budget
+    budget = cli.max_actions or expert_budget
+    if expert_budget <= 0:
+        raise SystemExit("expert action budget must be positive")
+    if budget < expert_budget:
+        raise SystemExit(
+            f"max actions {budget} is smaller than expert budget {expert_budget}"
+        )
 
     contract = None
     observation = None
@@ -571,6 +611,7 @@ def main() -> int:
         "offline_validation_batch_size": cli.offline_validation_batch_size,
         "offline_validation_trace": cli.offline_validation_trace,
         "execution_horizon": cli.execution_horizon,
+        "expert_action_budget": expert_budget,
         "max_actions": budget,
         "source": cli.source,
         "policy_backend": cli.policy_backend if cli.source == "policy" else None,
@@ -596,6 +637,7 @@ def main() -> int:
             print(
                 f"  [{len(cases):3d}/{len(cli.episode)}] ep{case['episode']:5d} "
                 f"{case['posture']:8s} success={case.get('success')} "
+                f"class={case.get('completion_class')} "
                 f"动作={case.get('executed_actions')}/{budget} "
                 f"查询={case.get('policy_queries')} {case.get('error', '')}",
                 flush=True,
@@ -613,11 +655,15 @@ def main() -> int:
         "dataset_mismatch": dataset_mismatch,
         "dataset": dataset.name,
         "dataset_digest": dataset.digest(),
+        "expert_action_budget": expert_budget,
         "max_actions": budget,
         "execution_horizon": cli.execution_horizon,
         "temporal_ensemble": cli.temporal_ensemble,
         "total": len(cases),
         "success": sum(1 for c in cases if c.get("success")),
+        "on_time_success": sum(1 for c in cases if c.get("on_time_success")),
+        "delayed_success": sum(1 for c in cases if c.get("delayed_success")),
+        "diagnostic_success": sum(1 for c in cases if c.get("diagnostic_success")),
         "gate_success": sum(1 for c in cases if c.get("gate_success")),
         "by_posture": {
             posture: {

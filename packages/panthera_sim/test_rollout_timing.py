@@ -1,7 +1,20 @@
 import pytest
-
 from render_rollout import inference_labels
-from rollout import summarize_inference_timing
+from rollout import classify_completion, summarize_inference_timing
+
+
+@pytest.mark.parametrize(
+    ("success", "executed", "expected"),
+    [
+        (True, 1037, "on_time_success"),
+        (True, 1038, "delayed_success"),
+        (False, 2074, "failure"),
+    ],
+)
+def test_completion_class_uses_expert_budget_as_a_gate_not_a_timeout(
+    success, executed, expected
+):
+    assert classify_completion(success, executed, 1037) == expected
 
 
 def test_inference_timing_is_amortized_over_executed_actions():

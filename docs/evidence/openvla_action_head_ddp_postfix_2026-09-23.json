@@ -1,0 +1,47 @@
+{
+  "action_chunk": 25,
+  "action_dimension": 7,
+  "batch_size_per_rank": 6,
+  "cases": {
+    "diffusion": {
+      "ddp_forward": {
+        "common_output_rank_max_abs_diff": 0.0,
+        "gradient_rank_max_abs_diff": 0.0,
+        "local_loss_max": 1.4304544925689697,
+        "local_loss_min": 1.377013921737671,
+        "parameter_rank_max_abs_diff": 0.0
+      },
+      "module_bypass_negative_control": {
+        "common_output_rank_max_abs_diff": 0.09818649291992188,
+        "gradient_rank_max_abs_diff": 0.13068892061710358,
+        "local_loss_max": 1.4304544925689697,
+        "local_loss_min": 1.377013921737671,
+        "parameter_rank_max_abs_diff": 0.0010000020265579224
+      }
+    },
+    "l1": {
+      "ddp_forward": {
+        "common_output_rank_max_abs_diff": 0.0,
+        "gradient_rank_max_abs_diff": 0.0,
+        "local_loss_max": 0.9545542597770691,
+        "local_loss_min": 0.9272451996803284,
+        "parameter_rank_max_abs_diff": 0.0
+      },
+      "module_bypass_negative_control": {
+        "common_output_rank_max_abs_diff": 0.17185169458389282,
+        "gradient_rank_max_abs_diff": 0.08321574330329895,
+        "local_loss_max": 0.9545542597770691,
+        "local_loss_min": 0.9272451996803284,
+        "parameter_rank_max_abs_diff": 0.0010000020265579224
+      }
+    }
+  },
+  "global_batch_size": 18,
+  "learning_rate": 0.0005,
+  "openvla_oft_version": "0.0.1",
+  "openvla_oft_source_commit": "c9f0f3d31f438d98f6137936ea78a47f0b2ab087",
+  "schema_version": 1,
+  "status": "pass",
+  "torch_version": "2.11.0+cu130",
+  "world_size": 3
+}

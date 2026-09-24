@@ -106,3 +106,17 @@ checkpoint 的双模式视频拼成一个总画面。评测器不再硬编码 7 
 /data/lyy/panthera-vla/state/dynamics-overfit-queue/evaluation.complete
 /data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/<run-id>/all-checkpoints-two-mode-comparison.mp4
 ```
+
+## 6. 2026-09-23 多卡训练完整性更正
+
+后续三卡审计确认，OpenVLA-OFT 原训练器把 action head 包装成 DDP 后仍直接调用
+`action_head.module.predict_action(...)`。GPU1–3 各自使用不同局部 batch 时，action head
+梯度没有跨卡归并；一步 AdamW 后参数最大差异已达到 `0.001000002`，而经过 DDP forward
+的对照差异为 `0`。该问题同时影响 diffusion action head，现已在受管 overlay 中修复并由
+三卡负对照/正验证覆盖。
+
+因此，本文件记录的 28 维运行及其编号 checkpoint 仍是实际发生过的实验和视频证据，但不再
+代表正确的三卡数据并行训练。既有“某 checkpoint 能否夹取、到位、松爪、复位”和抖动数据
+可以用于描述故障训练器行为，不能用于确认或否定 28 维 proprio 的效果。新的成对训练必须从
+共同基础模型开始，并在启动前通过 action-head DDP audit。完整分析见
+[OpenVLA-OFT 多卡 action head 同步修复报告](25_openvla_action_head_ddp_sync_fix_2026-09-23.md)。

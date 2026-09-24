@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "scope": "Panthera single-trajectory episode-2 overfit gate through the DDP-fixed 28D rerun",
+  "generated_at": "2026-09-24",
+  "episode": {
+    "id": 2,
+    "seed": 10000002,
+    "posture": "upright",
+    "unique_50hz_rows": 1037,
+    "action_contract": "25x7 absolute targets",
+    "expert_action_budget": 1037,
+    "diagnostic_action_budget": 2074
+  },
+  "version_1_short_7d": {
+    "training_steps": 31500,
+    "best_recorded_validation_loss": 0.0166,
+    "best_recorded_validation_step": 27000,
+    "loss_history_available": false,
+    "observation_fixes": ["restore recorded fixed camera", "make RGB/BGR contract consistent"],
+    "median_action_block_error_mrad": {
+      "wrong_camera": 187.2,
+      "fixed_camera": 3.9,
+      "recorded_frames": 2.7
+    },
+    "post_fix_behavior": "grasped and transported near the socket but did not reliably release",
+    "limit": "Only the documented best loss point survives; no curve is reconstructed."
+  },
+  "old_7d_run": {
+    "path": "/data/lyy/panthera-vla/ci/overfit-ep2-24h/overfit-ep2-24h-b6-20260920T140123Z",
+    "training_gpus": [1, 2, 3],
+    "batch_per_gpu": 6,
+    "learning_rate": 0.0005,
+    "checkpoint_steps": [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000, 65000, 70000, 75000, 80000, 85000],
+    "paired_checkpoints_evaluated": [10000, 30000, 35000, 40000, 45000, 50000, 55000, 60000, 65000, 70000, 75000, 80000, 85000],
+    "paired_mode_rollouts": 26,
+    "successful_mode_rollouts": 0,
+    "wandb_run_id": "adeiyrzm",
+    "wandb_raw_train_loss_points": 8596,
+    "wandb_train_step_range": [0, 85950],
+    "offline_l1_by_checkpoint": {
+      "5000": 0.0426185223, "10000": 0.0239905525, "15000": 0.0258532101,
+      "20000": 0.0189473983, "25000": 0.0231941475, "30000": 0.0262829187,
+      "35000": 0.0353444870, "40000": 0.0259028333, "45000": 0.0187057292,
+      "50000": 0.0168040788, "55000": 0.0169209084, "60000": 0.0142404767,
+      "65000": 0.0156569607, "70000": 0.0154270751, "75000": 0.0142387272,
+      "80000": 0.0151827873, "85000": 0.0159559629
+    },
+    "limit": "This run used the later-confirmed DDP-bypass training path and is not a clean 7D causal baseline."
+  },
+  "pre_fix_28d_run": {
+    "path": "/data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/dynamics-28d-ep2-24h-20260921T140150Z",
+    "wandb_run_id": "nwcg39nh",
+    "wandb_raw_train_loss_points": 8699,
+    "wandb_train_step_range": [0, 86980],
+    "paired_mode_rollouts": 34,
+    "strict_successes_under_1037_action_cap": 0,
+    "notable_behavior": {
+      "15000_standard_h20": "released and reset, but failed axis threshold at 25.02 degrees",
+      "40000_standard_h20": "position, axis, depth and release passed, but end speeds 0.054 m/s and 0.895 rad/s failed stability"
+    },
+    "limit": "Confirmed to use the faulty DDP-bypass path; behavior is historical evidence, not a clean 28D effectiveness result."
+  },
+  "ddp_audit": {
+    "affected_call": "action_head.module.predict_action/predict_noise",
+    "l1_bypass": {
+      "max_gradient_difference": 0.083215743,
+      "max_parameter_difference_after_one_step": 0.001000002,
+      "max_common_input_output_difference": 0.171851695
+    },
+    "l1_fixed": {
+      "max_gradient_difference": 0.0,
+      "max_parameter_difference_after_one_step": 0.0,
+      "max_common_input_output_difference": 0.0
+    },
+    "diffusion_fixed": {
+      "max_gradient_difference": 0.0,
+      "max_parameter_difference_after_one_step": 0.0,
+      "max_common_input_output_difference": 0.0
+    }
+  },
+  "ddp_fixed_28d_run": {
+    "path": "/data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/ddpfix-dynamics-28d-ep2-24h-20260922T173901Z",
+    "results": "/data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/ddpfix-dynamics-28d-ep2-24h-20260922T173901Z/extended-budget-eval-20260923T214752Z",
+    "proprio": "qpos(7)+qvel(7)+qacc(7)+effort(7)",
+    "training_gpus": [1, 2, 3],
+    "batch_per_gpu": 6,
+    "effective_batch": 18,
+    "learning_rate": 0.0005,
+    "wall_clock_budget": "24h",
+    "checkpoint_every_steps": 5000,
+    "checkpoints": 17,
+    "paired_mode_rollouts": 34,
+    "on_time_successes": [
+      {"step": 30000, "mode": "every_step_equal", "actions": 667},
+      {"step": 45000, "mode": "every_step_equal", "actions": 879},
+      {"step": 75000, "mode": "standard_h20", "actions": 709},
+      {"step": 75000, "mode": "every_step_equal", "actions": 836}
+    ],
+    "delayed_successes": [],
+    "checkpoint_success_any_mode": 3,
+    "checkpoint_success_both_modes": 1,
+    "selected_checkpoint": 75000,
+    "wandb_run_id": "1s35hyv6",
+    "wandb_raw_train_loss_points": 8504,
+    "wandb_train_step_range": [0, 85030],
+    "key_l1": {
+      "75000": 0.011871281450677056,
+      "80000": 0.009459100614628258,
+      "85000": 0.012978906025506163
+    },
+    "release_diagnosis": {
+      "75000_standard_h20": {"continuous_open_rows": 32, "max_gripper_command": 0.809277355670929, "insertion_depth_m": 0.03906919956207289},
+      "75000_every_step_equal": {"continuous_open_rows": 30, "max_gripper_command": 0.8056816530227661, "insertion_depth_m": 0.03988924026489271},
+      "80000_standard_h20": {"final_gripper_command": 0.3779296875, "insertion_depth_m": 0.014444553852081432, "gripper_open": false},
+      "80000_every_step_equal": {"final_gripper_command": 0.427859388589859, "insertion_depth_m": 0.01416190862655653, "gripper_open": false},
+      "85000_standard_h20": {"max_lift_m": 0.00598, "max_object_travel_m": 1.13863, "failed_at": "lift"},
+      "85000_every_step_equal": {"max_lift_m": 0.00084, "max_object_travel_m": 0.00103, "failed_at": "lift"}
+    },
+    "artifact_check": {
+      "pair_summaries": 17,
+      "pair_videos": 17,
+      "standard_videos": 17,
+      "ensemble_videos": 17,
+      "aggregate_video": "all-checkpoints-two-mode-comparison.mp4",
+      "summary": "summary.json",
+      "completion_marker": "EVALUATION_COMPLETE",
+      "ffprobe_issues": 0
+    }
+  },
+  "causal_limit": "The old 7D run and the current 28D run differ in both proprio width and DDP correctness; the observed improvement cannot be assigned to 28D proprio alone."
+}

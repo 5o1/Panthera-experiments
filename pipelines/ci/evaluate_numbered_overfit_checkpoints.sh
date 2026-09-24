@@ -14,6 +14,7 @@ robotwin_root="${workspace}/runtime/robotwin"
 base_model="${CI_OVERFIT_BASE_MODEL:-${workspace}/models/openvla-oft-place-empty-cup}"
 gpu="${CI_OVERFIT_EVAL_GPU:-0}"
 min_free_mib="${CI_OVERFIT_EVAL_MIN_FREE_MIB:-28000}"
+cuda_device_order="${CI_OVERFIT_CUDA_DEVICE_ORDER:-PCI_BUS_ID}"
 task_config="${CI_OVERFIT_TASK_CONFIG:-panthera_phone_cylinder_socket_v2_pilot.yml}"
 task_name="${CI_OVERFIT_TASK_NAME:-place_randomized_cylinder_in_socket}"
 episode="${CI_OVERFIT_EPISODE:-2}"
@@ -25,12 +26,16 @@ plot_temporal_loss="${CI_OVERFIT_EVAL_PLOT_TEMPORAL_LOSS:-1}"
 execution_horizon="${CI_OVERFIT_EVAL_EXECUTION_HORIZON:-20}"
 temporal_ensemble="${CI_OVERFIT_EVAL_TEMPORAL_ENSEMBLE:-}"
 variant_label="${CI_OVERFIT_EVAL_VARIANT_LABEL:-}"
+budget_multiplier="${CI_OVERFIT_EVAL_ACTION_BUDGET_MULTIPLIER:-2}"
+expert_action_budget="${CI_OVERFIT_EVAL_EXPERT_ACTION_BUDGET:-}"
+max_actions="${CI_OVERFIT_EVAL_MAX_ACTIONS:-}"
 results="${CI_OVERFIT_EVAL_RESULTS:-${run_root}/numbered-eval}"
 scratch="${results}/scratch"
 training_unit="${CI_OVERFIT_TRAINING_UNIT:-panthera-overfit-ep2-24h-b6-20260920T140123Z.service}"
 poll_seconds="${CI_OVERFIT_EVAL_POLL_SECONDS:-60}"
 only_step="${CI_OVERFIT_EVAL_ONLY_STEP:-}"
 refresh_mosaic_enabled="${CI_OVERFIT_EVAL_REFRESH_MOSAIC:-1}"
+lock_file="${CI_OVERFIT_EVAL_LOCK_FILE:-${workspace}/state/single-trajectory-numbered-eval.lock}"
 
 ensemble_args=()
 if [[ -n "$temporal_ensemble" ]]; then
@@ -65,6 +70,33 @@ done
 # shellcheck disable=SC1091
 source "${workspace}/tools/activate_lab_vla.sh" >/dev/null 2>&1
 export ROBOT_PLATFORM=PANTHERA
+if [[ "$cuda_device_order" != "PCI_BUS_ID" ]]; then
+  echo "错误：评测必须使用 CUDA_DEVICE_ORDER=PCI_BUS_ID 与 nvidia-smi 编号对齐。" >&2
+  exit 1
+fi
+export CUDA_DEVICE_ORDER="$cuda_device_order"
+if [[ ! "$budget_multiplier" =~ ^[1-9][0-9]*$ ]]; then
+  echo "错误：CI_OVERFIT_EVAL_ACTION_BUDGET_MULTIPLIER 必须为正整数。" >&2
+  exit 1
+fi
+if [[ -z "$expert_action_budget" ]]; then
+  expert_action_budget=$(PYTHONPATH="${packages}/panthera_sim" python3 - "$dataset_root" <<'PY'
+import sys
+from dataset import open_dataset
+
+print(open_dataset(sys.argv[1]).contract.required_action_budget)
+PY
+  )
+fi
+if [[ -z "$max_actions" ]]; then
+  max_actions=$((expert_action_budget * budget_multiplier))
+fi
+if [[ ! "$expert_action_budget" =~ ^[1-9][0-9]*$ ]] || \
+   [[ ! "$max_actions" =~ ^[1-9][0-9]*$ ]] || \
+   (( max_actions < expert_action_budget )); then
+  echo "错误：动作预算无效：expert=${expert_action_budget}, max=${max_actions}。" >&2
+  exit 1
+fi
 proprio_dim=$(python3 - "$training_record" <<'PY'
 import json
 import sys
@@ -78,9 +110,10 @@ PY
 )
 export PANTHERA_PROPRIO_DIM="$proprio_dim"
 mkdir -p "$results" "${workspace}/state"
-exec 9>"${workspace}/state/single-trajectory-numbered-eval.lock"
+mkdir -p "$(dirname "$lock_file")"
+exec 9>"$lock_file"
 if ! flock -n 9; then
-  echo "错误：已有 numbered checkpoint 评测正在运行。" >&2
+  echo "错误：评测锁已被占用：${lock_file}" >&2
   exit 1
 fi
 
@@ -169,6 +202,7 @@ while true; do
      "$active_scratch/proprio_projector--latest_checkpoint.pt"
 
   echo "=== step ${step}: merge ===" | tee "$log"
+  CUDA_DEVICE_ORDER="$cuda_device_order" CUDA_VISIBLE_DEVICES="$gpu" \
   python3 "$packages/panthera_vla/merge_lora_checkpoint.py" \
     --run-dir "$active_scratch" \
     --base-model "$base_model" \
@@ -196,7 +230,8 @@ PY
 
   echo "=== step ${step}: episode ${episode} closed-loop rollout on GPU${gpu} ===" | tee -a "$log"
   set +e
-  CUDA_VISIBLE_DEVICES="$gpu" ROBOT_PLATFORM=PANTHERA \
+  CUDA_DEVICE_ORDER="$cuda_device_order" CUDA_VISIBLE_DEVICES="$gpu" \
+  ROBOT_PLATFORM=PANTHERA \
   timeout --signal=INT --kill-after=120s 2h \
   python3 "$packages/panthera_sim/rollout.py" \
     --robotwin-root "$robotwin_root" \
@@ -206,12 +241,14 @@ PY
     --episode "$episode" \
     --model "$active_scratch" \
     --execution-horizon "$execution_horizon" \
+    --expert-action-budget "$expert_action_budget" \
+    --max-actions "$max_actions" \
     "${ensemble_args[@]}" \
     "${offline_validation_args[@]}" \
     --allow-parity-failure \
     --trace \
     --workers 1 \
-    --gpus 0 \
+    --gpus "$gpu" \
     --output "$output" >>"$log" 2>&1
   rollout_exit=$?
   set -e
@@ -246,6 +283,12 @@ report = json.load(open(sys.argv[1], encoding="utf-8"))
 print(f"{report['cases'][0]['offline_validation']['normalized_l1']:.6f}")
 PY
   )
+  completion_class=$(python3 - "$output" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+print(report["cases"][0]["completion_class"])
+PY
+  )
   if [[ "$plot_temporal_loss" == "1" ]]; then
     python3 "$packages/panthera_sim/plot_temporal_validation_loss.py" \
       --report "$output" \
@@ -256,7 +299,8 @@ PY
       >>"$log" 2>&1
   fi
   echo "=== step ${step}: render rollout video (offline val L1 ${validation_loss}) ===" | tee -a "$log"
-  CUDA_VISIBLE_DEVICES="$gpu" ROBOT_PLATFORM=PANTHERA \
+  CUDA_DEVICE_ORDER="$cuda_device_order" CUDA_VISIBLE_DEVICES="$gpu" \
+  ROBOT_PLATFORM=PANTHERA \
   python3 "$packages/panthera_sim/render_rollout.py" \
     --robotwin-root "$robotwin_root" \
     --dataset-root "$dataset_root" \
@@ -266,6 +310,7 @@ PY
     --source "$output" \
     --title "episode ${episode} | checkpoint ${step}" \
     --annotation "offline val L1 (norm) ${validation_loss}" \
+    --annotation "${completion_class} | expert <=${expert_action_budget} | timeout ${max_actions}" \
     "${variant_annotation_args[@]}" \
     --stride "$video_stride" \
     --fps "$video_fps" \
@@ -289,6 +334,12 @@ record = {
     "finished_at": datetime.now(timezone.utc).isoformat(),
     "step": step,
     "success": bool(case.get("success")),
+    "completion_class": case.get("completion_class"),
+    "on_time_success": bool(case.get("on_time_success")),
+    "delayed_success": bool(case.get("delayed_success")),
+    "diagnostic_success": bool(case.get("diagnostic_success")),
+    "expert_action_budget": case.get("expert_action_budget"),
+    "evaluation_action_budget": case.get("evaluation_action_budget"),
     "executed_actions": case.get("executed_actions"),
     "policy_queries": case.get("policy_queries"),
     "inference_timing": case.get("inference_timing"),

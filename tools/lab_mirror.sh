@@ -30,8 +30,16 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 remote="scalelab01:/data/lyy/panthera-vla"
 local_dir="${PANTHERA_GPU_NODE:-/mnt/gpu_node}"
 ssh_shim="${repo}/tools/lib/windows_ssh.sh"
-# The tracked set, matching the Lab's own .gitignore.
-paths=(bin packages pipelines overlays docs patches CLAUDE.md .gitignore)
+# Only deploy executable experiment code and configuration.  The two
+# repositories intentionally have different root metadata:
+#
+# - WSL owns technical reports and project-wide context under docs/;
+# - gpu_node owns runtime state, results, logs, videos and checkpoints;
+# - gpu_node's README/AGENTS/CLAUDE/.gitignore describe that execution role.
+#
+# Mirroring any of those role-specific files would recreate the boundary
+# violation fixed on 2026-09-23.
+paths=(bin packages pipelines overlays patches tools)
 
 ensure_local_dir() {
   [[ -d "$local_dir" ]] && return
@@ -44,13 +52,58 @@ MSG
   exit 1
 }
 
+port_is_open() {
+  timeout 1 bash -c "</dev/tcp/192.168.16.1/2222" 2>/dev/null
+}
+
+start_tunnel() {
+  if port_is_open; then
+    echo "Windows → Lab SSH 转发已可用。"
+    return
+  fi
+  # Do not leave ssh.exe as a child of this WSL command.  Tool/terminal SSH
+  # sessions may close as soon as the command returns and would otherwise
+  # deliver a hangup to the tunnel, taking the sshfs mount down with it.
+  # Start-Process creates an independent Windows process instead.
+  tunnel_pid=$(powershell.exe -NoProfile -NonInteractive -Command \
+    '$process = Start-Process -PassThru -WindowStyle Hidden' \
+    "-FilePath 'C:\\Program Files\\OpenSSH\\ssh.exe'" \
+    "-ArgumentList @('-N','-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=30','-o','ServerAliveCountMax=3','-L','192.168.16.1:2222:172.17.20.31:22','scalelab01');" \
+    '$process.Id' | tr -d '\r')
+  for _ in {1..50}; do
+    if port_is_open; then
+      echo "转发已起：WSL 可经 192.168.16.1:2222 到达 Lab（Windows pid ${tunnel_pid}）"
+      return
+    fi
+    sleep 0.2
+  done
+  echo "错误：等待 Windows SSH 转发就绪超时。" >&2
+  exit 1
+}
+
+mount_lab() {
+  command -v sshfs >/dev/null || {
+    echo "错误：未安装 sshfs，请先执行：sudo apt install -y sshfs" >&2
+    exit 1
+  }
+  ensure_local_dir
+  if mountpoint -q "$local_dir"; then
+    echo "已经挂载在 ${local_dir}"
+    return
+  fi
+  sshfs -p 2222 "lyy@192.168.16.1:/data/lyy/panthera-vla" "$local_dir" \
+    -o rw,IdentityFile="$HOME/.ssh/lyy@scalelab",IdentitiesOnly=yes,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,StrictHostKeyChecking=accept-new,uid="$(id -u)",gid="$(id -g)"
+  echo "已可读写挂载到 ${local_dir}"
+}
+
 usage() {
   cat >&2 <<USAGE
-用法: $(basename "$0") <pull|push|diff|tunnel|proxy|mount|umount>
+用法: $(basename "$0") <pull|push|diff|attach|tunnel|proxy|mount|umount>
 
   pull    Lab → ${local_dir}
   push    ${local_dir} → Lab   （先看 diff，再推）
   diff    只报告差异，不传输
+  attach  一键建立转发并挂载到 ${local_dir}（可读写）
   tunnel  在后台起一条 Windows 侧端口转发，供 sshfs 使用
   proxy   把 WSL 这边能用的代理反向转发到 Lab（Lab 自己的代理上游已断）
   mount   sshfs 挂载（需要先 tunnel，且已安装 sshfs）
@@ -92,17 +145,14 @@ case "$1" in
     echo "（空=一致）"
     ;;
   tunnel)
-    "/mnt/c/Program Files/OpenSSH/ssh.exe" -N \
-      -L "192.168.16.1:2222:172.17.20.31:22" scalelab01 &
-    echo "转发已起：WSL 可经 192.168.16.1:2222 到达 Lab（pid $!）"
+    start_tunnel
     ;;
   mount)
-    command -v sshfs >/dev/null || { echo "错误：未安装 sshfs（sudo apt install -y sshfs）" >&2; exit 1; }
-    ensure_local_dir
-    if mountpoint -q "$local_dir"; then echo "已经挂载在 ${local_dir}"; exit 0; fi
-    sshfs -p 2222 "lyy@192.168.16.1:/data/lyy/panthera-vla" "$local_dir" \
-      -o IdentityFile="$HOME/.ssh/lyy@scalelab",reconnect,ServerAliveInterval=15
-    echo "已挂载到 ${local_dir}"
+    mount_lab
+    ;;
+  attach)
+    start_tunnel
+    mount_lab
     ;;
   proxy)
     # The Lab has no working route to PyPI or GitHub. Its own proxy (xray,

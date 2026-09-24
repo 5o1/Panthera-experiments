@@ -177,6 +177,8 @@ MoveIt Servo 作为依赖；若以后需要其碰撞能力，可以重新以同�
 - [单轨迹过拟合门禁收口](docs/22_single_trajectory_overfit_gate_hardening_2026-09-20.md)
 - [OpenPI π0.5 迁移与同口径基线](docs/23_openpi_pi05_migration_baseline_2026-09-21.md)
 - [OpenVLA 28 维动力学 proprio 过拟合实验](docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md)
+- [OpenVLA-OFT 多卡 action head 同步修复报告](docs/25_openvla_action_head_ddp_sync_fix_2026-09-23.md)
+- [单轨迹 OpenVLA-OFT 过拟合实验阶段报告（HTML）](docs/panthera_single_trajectory_overfit_stage_report_zh.html)（[PDF](docs/panthera_single_trajectory_overfit_stage_report_zh.pdf)）
 - [单目视觉实验计划](<docs/Panthera-HT 单目视觉手臂与手势遥操作实验计划.md>)
 - [依赖列表](<docs/Panthera-HT 单目视觉遥操作依赖列表.md>)
 

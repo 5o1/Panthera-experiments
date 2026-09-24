@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "fault_reproduced",
+  "scope": "L1RegressionActionHead",
+  "world_size": 3,
+  "batch_size_per_rank": 6,
+  "global_batch_size": 18,
+  "learning_rate": 0.0005,
+  "action_chunk": 25,
+  "action_dimension": 7,
+  "proprio_dimension": 28,
+  "openvla_oft_version": "0.0.1",
+  "openvla_oft_source_commit": "c9f0f3d31f438d98f6137936ea78a47f0b2ab087",
+  "torch_version": "2.11.0+cu130",
+  "current_module_bypass": {
+    "local_loss_min": 0.9272451996803284,
+    "local_loss_max": 0.9545542597770691,
+    "gradient_rank_max_abs_diff": 0.08321574330329895,
+    "parameter_rank_max_abs_diff": 0.0010000020265579224,
+    "common_output_rank_max_abs_diff": 0.17185169458389282
+  },
+  "ddp_forward_control": {
+    "local_loss_min": 0.9272451996803284,
+    "local_loss_max": 0.9545542597770691,
+    "gradient_rank_max_abs_diff": 0.0,
+    "parameter_rank_max_abs_diff": 0.0,
+    "common_output_rank_max_abs_diff": 0.0
+  },
+  "original_lab_log": "/data/lyy/panthera-vla/tmp/audit_openvla_action_head_ddp.final.log"
+}

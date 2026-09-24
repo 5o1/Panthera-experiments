@@ -43,6 +43,8 @@
     单相机/7 维适配、LeRobot 转换、统一评测 backend 和公平比较门禁。
 22. [OpenVLA 28 维动力学 proprio 过拟合实验](docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md)：
     qpos/qvel/qacc/effort 合同、GPU0 smoke、三卡后继训练和验收口径。
+23. [OpenVLA-OFT 多卡 action head 同步修复](docs/25_openvla_action_head_ddp_sync_fix_2026-09-23.md)：
+    DDP forward 绕过的三卡复现、L1/diffusion 修复、历史 checkpoint 影响和复现门禁。
 
 ## 当前边界
 
@@ -66,6 +68,9 @@
   判据。正式训练使用固定计算预算、周期 checkpoint，并以闭环 rollout 选模。
 - RoboTwin 上游固定为 `main@6dde57155eafa3e4ebf6ad1f93a7cf7d5d41a755`。上游检出必须
   保持干净；运行树只能由 `pipelines/assemble_runtime.py` 从 pin、overlay 和 patch 生成。
+- 修复前的 OpenVLA-OFT 多卡连续动作头训练绕过了 DDP `forward`，各 rank action head
+  会分叉；旧三卡 checkpoint 只能保留作诊断，不能作为正确多卡训练基线。任何新多卡训练
+  必须先通过 `bin/run_lab_openvla_action_head_ddp_audit.sh`。
 
 ## 维护规则
 

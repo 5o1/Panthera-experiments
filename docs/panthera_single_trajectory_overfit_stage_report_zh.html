@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>从不可解释的失败到首次闭环成功：Panthera 单轨迹 OpenVLA-OFT 过拟合实验阶段报告</title>
+  <style>
+    @page { size: A4; margin: 17mm 17mm 19mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #17212b; background: #fff; font: 10.3pt/1.7 "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; }
+    main { max-width: 176mm; margin: 0 auto; }
+    h1 { margin: 17mm 0 4mm; text-align: center; font-size: 21pt; line-height: 1.35; }
+    .subtitle { text-align: center; color: #5a6875; margin-bottom: 10mm; }
+    h2 { color: #173f68; font-size: 15pt; border-bottom: 1px solid #a8bbcb; padding-bottom: 1.5mm; margin: 8mm 0 3mm; }
+    h3 { color: #24577f; font-size: 12pt; margin: 5mm 0 1.5mm; }
+    h2, h3, caption { break-after: avoid-page; page-break-after: avoid; }
+    p { margin: 0 0 2.7mm; text-align: justify; }
+    a { color: #135f9b; text-decoration: none; }
+    code { font-family: Consolas, "Noto Sans Mono CJK SC", monospace; overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 2.5mm 0 3.5mm; padding: 3mm 4mm; background: #152330; color: #f1f6fa; border-radius: 2mm; font: 8.2pt/1.5 Consolas, monospace; break-inside: avoid; }
+    .abstract, .note, .limit { padding: 4mm 5mm; margin: 3mm 0 4mm; break-inside: avoid; }
+    .abstract { background: #eef5fa; border-left: 4px solid #3f78a7; }
+    .note { background: #f0f8f3; border-left: 4px solid #3c7d58; }
+    .limit { background: #fff5e8; border-left: 4px solid #b27627; }
+    .keywords { margin-top: 3mm; }
+    table { width: 100%; border-collapse: collapse; margin: 4mm 0; font-size: 8.7pt; break-inside: auto; }
+    caption { caption-side: top; text-align: center; color: #536471; margin-bottom: 1.5mm; font-size: 9pt; }
+    th, td { border: 1px solid #aab7c4; padding: 1.8mm 2.1mm; vertical-align: top; }
+    th { background: #e8f0f6; color: #173f68; text-align: left; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    .good { color: #17643e; font-weight: 700; }
+    .bad { color: #973c36; font-weight: 700; }
+    .muted { color: #61717f; }
+    .small { font-size: 8.8pt; color: #566673; }
+    figure { margin: 5mm 0 6mm; break-inside: avoid; }
+    svg { display: block; width: 100%; height: auto; }
+    figcaption { text-align: center; color: #536471; font-size: 9pt; margin-top: 1.5mm; }
+    ul, ol { margin: 2mm 0 3mm 7mm; padding-left: 5mm; }
+    li { margin: 1mm 0; }
+    .step { border: 1px solid #b6c2cc; border-left: 4px solid #3c7d58; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+    .step h3 { margin-top: 0; }
+    .stop { color: #963c37; font-weight: 700; }
+    .page-break { break-before: page; }
+    .refs { font-size: 9pt; }
+    .refs p { padding-left: 7mm; text-indent: -7mm; margin-bottom: 2mm; }
+  </style>
+</head>
+<body><main>
+  <h1>从不可解释的失败到首次闭环成功：<br>Panthera 单轨迹 OpenVLA-OFT<br>过拟合实验阶段报告</h1>
+  <div class="subtitle">单机械臂圆柱入槽 · episode 2 · 截止 2026 年 9 月 24 日</div>
+
+  <section class="abstract">
+    <strong>摘要：</strong>本报告按四次真实训练的先后顺序，记录 Panthera 单轨迹过拟合门禁怎样从不可解释的失败推进到首次纯模型闭环成功。任务是一台六轴 Panthera 机械臂使用一个夹爪，将一个直立圆柱抓起并放入凹槽。实验最终固定同一条 1037 步、50 Hz（每 20 ms 一个动作）的专家轨迹，不测试新场景泛化。版本 1 是 31500 步的七维短训练；它首先暴露相机位姿和颜色通道错配，修正评测后模型已能抓取和搬运，却无法释放。版本 2 把七维训练延长到 24 小时并周期保存模型，仍在 26 次双模式闭环评测中全部失败，但把故障定位到释放窗口，并将动作块长度排除为直接原因。版本 3 加入位置、速度、加速度和载荷共 28 维状态；部分视频已出现插入和释放，但严格指标仍因姿态或稳定速度不合格而失败。随后，多卡审计证明连续动作头绕过了分布式数据并行包装器，各 GPU 参数会分叉。版本 4 修复这一路径后重新进行 28 维训练，在 17 个模型存档、34 次模式评测中取得 4 次准时成功，来自 30000、45000 和 75000 步；其中 75000 步在两种执行模式下均成功。四版各自的损失图表明训练 loss 和专家状态离线 L1 都会下降，但 80000 步比成功的 75000 步具有更低离线 L1 却不释放，85000 步进一步退化到抬起阶段。因此，闭环执行必须承担选模职责；旧版本可能受多卡缺陷影响，现有证据也不能把进步单独归因于 28 维状态。
+    <div class="keywords"><strong>关键词：</strong>视觉—语言—动作模型；OpenVLA-OFT；单轨迹过拟合；分布式数据并行；动作分块；闭环评测；Panthera</div>
+  </section>
+
+  <h2>1　研究问题、范围与当前结论</h2>
+  <p>正式训练一个能处理不同物体位置、姿态和相机视角的策略之前，项目先提出一个更小的问题：模型只看一条示范，能否在示范对应的同一场景、同一相机和同一任务指令下，把整段动作闭环复现出来？这个检查称为单轨迹过拟合门禁。它只验证数据转换、模型输入、连续动作头、仿真执行和成功判定能否共同工作，不衡量泛化能力。</p>
+  <p>实验对象固定为正式固定相机数据中的第 2 条完整示范轨迹（episode 2）：随机场景编号为 <code>10000002</code>，圆柱直立，去除阶段边界处重复采样后有 1037 个唯一控制步。模型每次输出 25 个未来动作，每个动作包含六个绝对关节目标和一个归一化夹爪目标。报告中的“成功”只表示圆柱在这个固定仿真场景中满足插入、姿态、速度和松爪条件，不表示模型能处理其他场景，更不表示可以启动真实机械臂。</p>
+  <div class="note"><strong>阶段结论：</strong>修复后的 28 维运行已经让纯 OpenVLA-OFT 策略在固定 episode 2 上闭环成功；75000 步存档是当前唯一在两种执行方式下都成功的候选。单轨迹门禁从“始终失败”变为“存在通过模型”，但成功只集中在少数存档，训练继续后会退化。</div>
+
+  <h2>2　理解实验所需的四个概念</h2>
+  <h3>2.1　视觉—语言—动作模型和连续动作头</h3>
+  <p>视觉—语言—动作模型（Vision-Language-Action model, VLA）读取任务图像、文字指令和机器人自身状态，再输出机器人动作。OpenVLA 是当前实验所用的公开基础模型[5]；OpenVLA-OFT 在它的视觉语言主干后增加连续动作头，可并行生成一段浮点动作，并用预测值与专家值之间的平均绝对误差训练[1]。本项目的动作头一次输出 <code>25×7</code> 个数，不输出槽坐标、任务阶段或安全判定。</p>
+
+  <h3>2.2　动作块和两种执行方式</h3>
+  <p>一次生成 25 个未来动作称为动作分块。标准模式每次执行前 20 个动作，再读取新图像重新规划，本文记为 h20。第二种模式每个控制步都重新生成 25 个动作，并把所有覆盖当前时刻的历史预测与最新预测等权平均，本文称为逐步等权模式。ACT 等工作使用重叠动作预测的时序融合来减小动作不连续[2]；本项目只采用这一执行思想，没有使用 ACT 的网络结构。</p>
+
+  <h3>2.3　离线误差与闭环结果</h3>
+  <p>离线验证把专家轨迹中的图像和机器人状态送给模型，再比较预测动作与专家动作。闭环评测则把模型动作送入仿真环境，读取动作执行后产生的新图像，再继续预测；这种连续执行称为闭环执行（rollout）。行为克隆在闭环中可能访问专家数据没有覆盖的状态，后续误差会继续积累；DAgger 的经典工作正是通过收集策略实际访问状态上的专家标签来缓解这一问题[3]。因此，离线误差可以定位某个动作维度的偏差，却不能代替闭环任务成败。</p>
+
+  <h3>2.4　多卡训练为什么需要经过 DDP 包装器</h3>
+  <p>分布式数据并行（DistributedDataParallel, DDP）为每张 GPU 保留一份模型。各卡处理不同的小批量数据，反向传播时同步对应参数的梯度，使一次优化后各副本仍一致。PyTorch 官方文档将 DDP 构造、包装器的 <code>forward</code> 和对其输出求导列为同步路径[4]。如果训练代码直接调用包装器内部的 <code>module</code>，局部计算仍能运行，但梯度同步钩子可能没有覆盖这条调用路径。</p>
+
+  <h2>3　固定实验合同</h2>
+  <table>
+    <caption>表 1　最终单轨迹过拟合实验中固定的输入、输出与判定</caption>
+    <tr><th>项目</th><th>固定值</th><th>作用</th></tr>
+    <tr><td>场景</td><td>episode 2，seed 10000002，直立圆柱</td><td>排除场景变化，只检查能否复现一条训练轨迹。</td></tr>
+    <tr><td>视觉输入</td><td>单张固定机位红绿蓝（RGB）图像</td><td>与数据录制相机一致；不含腕部相机和图像历史。</td></tr>
+    <tr><td>动作</td><td>25×7；六关节绝对目标 + 夹爪归一化目标</td><td>动作块覆盖未来 0.5 秒，控制频率为 50 Hz。</td></tr>
+    <tr><td>七维状态</td><td>当前关节与夹爪位置（代码字段 <code>qpos</code>）</td><td>旧运行使用。</td></tr>
+    <tr><td>28 维状态</td><td>位置 <code>qpos</code>、速度 <code>qvel</code>、加速度 <code>qacc</code>、关节载荷 <code>effort</code>，各 7 维</td><td>增加当前运动和载荷信息，不增加历史或任务阶段。</td></tr>
+    <tr><td>执行模式</td><td>h20；逐步等权</td><td>分别观察低推理负载与动作平滑后的行为。</td></tr>
+    <tr><td>专家时限</td><td>1037 个动作</td><td>不慢于专家时记为准时成功。</td></tr>
+    <tr><td>诊断上限</td><td>2074 个动作</td><td>1038–2074 步成功记为延迟成功；到上限仍未完成记为失败。</td></tr>
+  </table>
+  <p>六个旋转关节的位置、速度和加速度单位依次为 rad、rad/s 和 rad/s²；夹爪位置被缩放到 0–1，夹爪速度和加速度因此是每秒、每秒平方的归一化变化率。六个旋转关节的载荷取关节轴扭矩，单位为 N·m；夹爪是直线关节，其载荷为轴向力，单位为 N。送入模型前，28 个维度分别使用 RLDS 数据统计量归一化，避免数值很大的夹爪加速度主导损失。</p>
+  <p>旧七维实验从 <code>/data/lyy/panthera-vla/data/place_randomized_cylinder_in_socket/panthera_phone_cylinder_socket_v2_single_grasp_sft_v2_fixedcam</code> 抽取 episode 2。28 维实验读取确定性重放得到的 <code>/data/lyy/panthera-vla/ci/dynamics-ep2/dataset</code>。每次运行都在自己的目录中建立只含这一条轨迹的子集。</p>
+  <p>训练、离线验证和闭环评测都围绕同一 episode，因此没有独立训练集、验证集或测试集；离线 L1 只作为诊断遥测。</p>
+
+  <figure>
+    <svg viewBox="0 0 1000 250" role="img" aria-label="单轨迹训练与闭环评测数据流">
+      <defs><marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#426b8c"/></marker></defs>
+      <style>.b{fill:#edf4f9;stroke:#426b8c;stroke-width:2}.g{fill:#eef8f1;stroke:#3c7d58;stroke-width:2}.o{fill:#fff5e8;stroke:#b27627;stroke-width:2}.t{font:18px 'Noto Sans CJK SC';fill:#183247}.s{font:15px 'Noto Sans CJK SC';fill:#526675}.l{stroke:#426b8c;stroke-width:3;marker-end:url(#arr)}</style>
+      <rect class="b" x="15" y="70" width="180" height="100" rx="12"/><text class="t" x="105" y="105" text-anchor="middle">episode 2</text><text class="s" x="105" y="135" text-anchor="middle">RGB + 状态 + 专家动作</text>
+      <rect class="b" x="255" y="70" width="185" height="100" rx="12"/><text class="t" x="348" y="105" text-anchor="middle">OpenVLA-OFT</text><text class="s" x="348" y="135" text-anchor="middle">可训练增量 + 动作头</text>
+      <rect class="g" x="500" y="20" width="200" height="90" rx="12"/><text class="t" x="600" y="55" text-anchor="middle">离线验证</text><text class="s" x="600" y="83" text-anchor="middle">仍读取专家状态</text>
+      <rect class="o" x="500" y="140" width="200" height="90" rx="12"/><text class="t" x="600" y="175" text-anchor="middle">闭环执行</text><text class="s" x="600" y="203" text-anchor="middle">执行模型自己的动作</text>
+      <rect class="o" x="765" y="140" width="220" height="90" rx="12"/><text class="t" x="875" y="175" text-anchor="middle">成功/阶段/轨迹</text><text class="s" x="875" y="203" text-anchor="middle">视频与逐步 JSON</text>
+      <line class="l" x1="195" y1="120" x2="255" y2="120"/><line class="l" x1="440" y1="100" x2="500" y2="70"/><line class="l" x1="440" y1="140" x2="500" y2="180"/><line class="l" x1="700" y1="185" x2="765" y2="185"/>
+    </svg>
+    <figcaption>图 1　离线验证与闭环评测读取同一模型，但后者会把模型误差反馈到下一次观测。</figcaption>
+  </figure>
+
+  <h2>4　四版实验的问题—修复链</h2>
+  <figure>
+    <svg viewBox="0 0 1000 310" role="img" aria-label="过拟合实验时间线">
+      <style>.axis{stroke:#6c7d8c;stroke-width:4}.dot{fill:#426b8c}.bad2{fill:#b85c52}.good2{fill:#3c7d58}.tx{font:16px 'Noto Sans CJK SC';fill:#183247}.sm{font:14px 'Noto Sans CJK SC';fill:#586b79}</style>
+      <line class="axis" x1="70" y1="150" x2="930" y2="150"/>
+      <circle class="bad2" cx="110" cy="150" r="13"/><text class="tx" x="110" y="75" text-anchor="middle">旧 0/18</text><text class="sm" x="110" y="98" text-anchor="middle">预算/相机错配</text>
+      <circle class="dot" cx="270" cy="150" r="13"/><text class="tx" x="270" y="205" text-anchor="middle">单轨迹门禁</text><text class="sm" x="270" y="228" text-anchor="middle">固定 episode 2</text>
+      <circle class="bad2" cx="440" cy="150" r="13"/><text class="tx" x="440" y="75" text-anchor="middle">旧 7D 24h</text><text class="sm" x="440" y="98" text-anchor="middle">0/26 模式评测</text>
+      <circle class="dot" cx="610" cy="150" r="13"/><text class="tx" x="610" y="205" text-anchor="middle">28D 派生集</text><text class="sm" x="610" y="228" text-anchor="middle">动力学状态进入模型</text>
+      <circle class="bad2" cx="760" cy="150" r="13"/><text class="tx" x="760" y="75" text-anchor="middle">DDP 审计</text><text class="sm" x="760" y="98" text-anchor="middle">发现 rank 分叉</text>
+      <circle class="good2" cx="910" cy="150" r="13"/><text class="tx" x="910" y="205" text-anchor="middle">修复后重训</text><text class="sm" x="910" y="228" text-anchor="middle">3 个模型存档成功</text>
+      <text class="sm" x="500" y="285" text-anchor="middle">2026-09-19　　　　　　　　　　　　　　　　　　　　　　　　　2026-09-24</text>
+    </svg>
+    <figcaption>图 2　从评测台纠错到修复后 28 维重训的主要阶段。红点表示结果受到缺陷影响或未通过，绿点表示首次获得闭环成功。</figcaption>
+  </figure>
+
+  <h3>4.1　旧 0/18 为什么不能作为模型结论</h3>
+  <p>早期多场景评测先后发现三类测量缺陷。第一，RoboTwin 的隐藏任务上限把配置中的 1600 步静默降为 1000 步，许多专家轨迹在这个预算内本来就无法结束。第二，数据用固定相机采集，评测却从桌子另一侧随机相机位置观察。第三，数据写入和训练读取对 JPEG 红蓝通道采用不同约定。修复相机后，同一状态下的动作块中位误差从 187.2 毫弧度（mrad，1000 mrad 等于 1 rad）降到 3.9 mrad。由错误相机产生的 0/18 和 0/12 均已作废，只保留为评测台故障证据。</p>
+
+  <h3>4.2　为什么缩小到一条轨迹</h3>
+  <p>当多场景失败同时可能来自模型、数据和环境时，单轨迹门禁把变化压缩到最小：训练和评测读取同一条 episode、同一个实际相机位姿和同一份场景几何。模型若仍不能成功，就先检查动作合同、训练器和闭环累积误差，不先归因于泛化不足。运行目录不可覆盖，模型存档必须完整写入后才允许合并评测。</p>
+
+  <table>
+    <caption>表 2　四次真实训练及其问题—修复关系</caption>
+    <tr><th>版本</th><th>训练</th><th>本版发现的问题</th><th>由此进入下一版的修改</th></tr>
+    <tr><td>V1</td><td>7D，31500 步</td><td>相机和颜色通道错配；修正后能搬运但不释放；loss 历史未完整留存</td><td>固定观测合同，改用 24 h 周期存档</td></tr>
+    <tr><td>V2</td><td>7D，24 h</td><td>0/26；圆柱到达释放位但夹爪闭合；平均 L1 掩盖释放窗口</td><td>记录阶段误差，加入速度、加速度和载荷</td></tr>
+    <tr><td>V3</td><td>28D，24 h，DDP 修复前</td><td>行为接近完成但严格指标失败；随后发现 GPU 动作头副本分叉</td><td>明确成功阈值和预算，修复 DDP 调用路径</td></tr>
+    <tr><td>V4</td><td>28D，24 h，DDP 修复后</td><td>首次成功；最低离线 L1 和最后存档仍可能失败</td><td>使用闭环执行选模，保留 75000 步存档</td></tr>
+  </table>
+
+  <h2>5　版本 1：七维短训练先暴露评测观测错误</h2>
+  <h3>5.1　配置与仅存的 loss 证据</h3>
+  <p>V1 使用当前六关节和夹爪位置组成的七维状态，针对 episode 2 训练 31500 个优化步骤。现存记录只保留“27000 步时最佳验证 loss 为 0.0166”这一点；逐步 W&amp;B 历史和各存档离线重算结果当时没有归档。图 3 只画这个已知点，不连接成曲线。这个证据缺口本身成为下一版必须周期保存模型存档、日志和评测产物的理由。</p>
+  <figure>
+    <svg viewBox="0 0 1000 330" role="img" aria-label="版本一仅存的损失证据">
+      <style>.ax{stroke:#70818f;stroke-width:2}.gr{stroke:#dde4e9;stroke-width:1}.p{fill:#b27627}.lb{font:15px 'Noto Sans CJK SC';fill:#233746}.sm{font:13px 'Noto Sans CJK SC';fill:#5b6c79}.dash{stroke:#b27627;stroke-width:2;stroke-dasharray:8 7}</style>
+      <line class="ax" x1="75" y1="35" x2="75" y2="270"/><line class="ax" x1="75" y1="270" x2="955" y2="270"/>
+      <line class="gr" x1="75" y1="40" x2="955" y2="40"/><line class="gr" x1="75" y1="117" x2="955" y2="117"/><line class="gr" x1="75" y1="193" x2="955" y2="193"/>
+      <text class="sm" x="62" y="45" text-anchor="end">0.03</text><text class="sm" x="62" y="122" text-anchor="end">0.02</text><text class="sm" x="62" y="198" text-anchor="end">0.01</text><text class="sm" x="62" y="275" text-anchor="end">0</text>
+      <text class="sm" x="75" y="297" text-anchor="middle">0</text><text class="sm" x="354" y="297" text-anchor="middle">10k</text><text class="sm" x="633" y="297" text-anchor="middle">20k</text><text class="sm" x="912" y="297" text-anchor="middle">30k</text>
+      <line class="dash" x1="828" y1="142.7" x2="828" y2="270"/><circle class="p" cx="828" cy="142.7" r="8"/><text class="lb" x="828" y="126" text-anchor="middle">27k：0.0166</text>
+      <text class="sm" x="500" y="78" text-anchor="middle">原始逐步历史未保留，不能补画或推断曲线形状</text><text class="sm" x="500" y="320" text-anchor="middle">累计优化步数</text>
+    </svg>
+    <figcaption>图 3　V1 唯一可核验的 loss 点。它是当时记录的最佳验证值，与后续训练后重算的离线 L1 不能直接互换。</figcaption>
+  </figure>
+  <h3>5.2　修正观测后，问题推进到“不会释放”</h3>
+  <p>恢复数据采集时的固定相机并统一 RGB/BGR 后，同一状态的动作块中位误差由 187.2 mrad 降至 3.9 mrad；直接读取记录帧时约为 2.7 mrad。V1 此后能抓住圆柱、抬起并搬到槽附近，却没有稳定松爪。闭环动作误差约 74.5 mrad，而专家状态上的开环误差约 3.9 mrad，说明模型执行自己的早期偏差后进入了示范未覆盖的状态。此时还无法区分训练不足、动作块截断和释放阶段歧义，下一版因此延长训练并保存完整动作块与周期存档。</p>
+
+  <h2>6　版本 2：七维 24 小时训练定位到释放窗口</h2>
+  <p>第一轮正式单轨迹长训练使用七维当前关节状态，GPU1–3 每卡处理 6 个样本，学习率 <code>5e-4</code>，连续运行 24 小时，每 5000 个优化步骤保存一次，共得到 5000–85000 步的 17 个模型存档。其中 13 个存档具有完整的 h20 与逐步等权成对报告，共 26 次闭环执行，成功数为 0。</p>
+  <p>图 4 的蓝线是 W&amp;B 运行 <code>adeiyrzm</code> 中每 2500 步区间的训练 loss 中位数；橙线是训练后让 17 个存档读取全部 1037 个专家状态而确定性重算的归一化动作 L1。V2 配置没有独立验证集，两条线的来源和计算时机不同，只能分别观察本版趋势。</p>
+  <figure>
+    <svg viewBox="0 0 1000 330" role="img" aria-label="版本二训练损失与离线L1">
+      <style>.ax{stroke:#70818f;stroke-width:2}.gr{stroke:#dde4e9;stroke-width:1}.tr{fill:none;stroke:#426b8c;stroke-width:3}.of{fill:none;stroke:#c5782d;stroke-width:3}.sm{font:13px 'Noto Sans CJK SC';fill:#5b6c79}</style>
+      <line class="ax" x1="75" y1="40" x2="75" y2="270"/><line class="ax" x1="75" y1="270" x2="955" y2="270"/><line class="gr" x1="75" y1="40" x2="955" y2="40"/><line class="gr" x1="75" y1="116.7" x2="955" y2="116.7"/><line class="gr" x1="75" y1="193.3" x2="955" y2="193.3"/>
+      <text class="sm" x="62" y="45" text-anchor="end">0.09</text><text class="sm" x="62" y="121" text-anchor="end">0.06</text><text class="sm" x="62" y="198" text-anchor="end">0.03</text><text class="sm" x="62" y="275" text-anchor="end">0</text>
+      <text class="sm" x="75" y="297" text-anchor="middle">0</text><text class="sm" x="282" y="297" text-anchor="middle">20k</text><text class="sm" x="489" y="297" text-anchor="middle">40k</text><text class="sm" x="696" y="297" text-anchor="middle">60k</text><text class="sm" x="903" y="297" text-anchor="middle">80k</text>
+      <polyline class="tr" points="100.8,45.4 126.7,149.0 152.5,186.1 178.4,198.1 204.3,205.4 230.2,210.1 256.1,211.7 282.0,214.8 307.8,217.1 333.7,217.3 359.6,219.2 385.5,220.1 411.4,220.4 437.2,219.9 463.1,223.2 489.0,224.1 514.9,223.8 540.8,223.5 566.7,226.3 592.5,228.2 618.4,226.3 644.3,227.3 670.2,227.7 696.1,230.5 722.0,231.0 747.8,231.8 773.7,232.6 799.6,232.7 825.5,232.5 851.4,234.2 877.2,234.5 903.1,234.1 929.0,235.1 954.9,235.9 964.8,235.2"/>
+      <polyline class="of" points="126.8,161.1 178.5,208.7 230.3,203.9 282.1,221.6 333.8,210.7 385.6,202.8 437.4,179.7 489.1,203.8 540.9,222.2 592.6,227.1 644.4,226.8 696.2,233.6 747.9,230.0 799.7,230.6 851.5,233.6 903.2,231.2 955.0,229.2"/>
+      <line class="tr" x1="575" y1="18" x2="615" y2="18"/><text class="sm" x="623" y="23">训练 loss（2500 步区间中位数）</text><line class="of" x1="575" y1="35" x2="615" y2="35"/><text class="sm" x="623" y="40">训练后离线 L1</text><text class="sm" x="515" y="320" text-anchor="middle">累计优化步数</text>
+    </svg>
+    <figcaption>图 4　V2 的训练 loss 与离线 L1 总体下降，但闭环仍为 0/26；loss 改善没有解决释放。</figcaption>
+  </figure>
+  <p>失败位置已经从任务开头推进到释放阶段。65000 步存档的逐步等权版本能够稳定把圆柱送到正确直接释放位，圆柱中心高度误差约 0.8 mm；但轨迹第 750–1041 行的最新夹爪预测只在 0.305–0.312 之间，始终低于 0.5 的打开判定。专家轨迹的夹爪标签在第 801 行从 0.48291 变为 0.50050，而切换前后整幅图平均像素变化只有 0.20/255，七维状态变化的二范数约为 <code>4.29×10⁻⁵</code>。单帧图像和当前关节位置难以区分“继续保持夹紧”和“现在开始松开”。</p>
+  <p>逐步等权模式改善动作连续性，但旧运行中单次策略推理约需 128.59 ms，每个控制步都查询时相当于 50 Hz 预算的 6.43 倍；h20 把一次推理摊到 20 个动作，约为 6.45 ms/action。两者只测量策略侧时间，不包含相机、网络、ROS 或真实机械臂控制器。</p>
+  <p>完整 25 步动作块同样没有出现释放命令，因而排除了“执行窗口太短而错过动作块后部”的解释。45000 步存档的分阶段分析又显示，释放窗口夹爪 L1 是整条轨迹夹爪 L1 的 1.64 倍；只比较当前动作时达到 2.08 倍。问题由“可能训练不够久”收缩为“专家状态平均 loss 掩盖释放阶段，而且单帧图像加七维位置无法稳定区分相邻阶段”。V3 因此保持图像、动作和轨迹不变，只加入速度、加速度和载荷状态。</p>
+
+  <h2>7　版本 3：28 维状态改善行为，并暴露训练器缺陷</h2>
+  <h3>7.1　增加了什么信息</h3>
+  <p>为让模型看到当前运动方向和接触载荷，状态从七维关节与夹爪位置扩展为：</p>
+  <pre>[qpos(7), qvel(7), qacc(7), effort(7)]</pre>
+  <p>位置、速度和加速度来自仿真关节；关节载荷字段 <code>effort</code> 使用 PhysX 中父链接传向子链接的关节坐标系载荷。历史分层数据文件（HDF5）只保存位置，因此本阶段在同一场景中确定性重放专家动作，补齐速度、加速度和载荷。重放位置与记录值的中位绝对误差为 0.0002734 rad，99% 的样本不超过 0.0072121 rad，均通过 0.02/0.10 rad 门禁。这个派生集只服务单轨迹诊断，正式多轨迹数据仍应在采集时原生记录动力学状态。</p>
+
+  <h3>7.2　loss 下降，视频行为却仍受严格条件约束</h3>
+  <p>V3 沿用 V2 的三卡、batch、学习率、24 小时和 5000 步存档配置。图 5 蓝线来自 W&amp;B 运行 <code>nwcg39nh</code>，橙线为 17 个存档在 1037 个专家状态上的训练后离线 L1。34 条闭环执行在当时的 1037 动作硬上限下均记录为失败，但视频已经出现完整任务的关键行为：15000 步 h20 松爪并复位，最终因圆柱轴角 25.02° 超过 5° 失败；40000 步 h20 的位置、轴角、插入深度和开爪均合格，却因结束时线速度 0.054 m/s、角速度 0.895 rad/s 尚未稳定而失败。</p>
+  <figure>
+    <svg viewBox="0 0 1000 330" role="img" aria-label="版本三训练损失与离线L1">
+      <style>.ax{stroke:#70818f;stroke-width:2}.gr{stroke:#dde4e9;stroke-width:1}.tr{fill:none;stroke:#426b8c;stroke-width:3}.of{fill:none;stroke:#c5782d;stroke-width:3}.sm{font:13px 'Noto Sans CJK SC';fill:#5b6c79}</style>
+      <line class="ax" x1="75" y1="40" x2="75" y2="270"/><line class="ax" x1="75" y1="270" x2="955" y2="270"/><line class="gr" x1="75" y1="40" x2="955" y2="40"/><line class="gr" x1="75" y1="116.7" x2="955" y2="116.7"/><line class="gr" x1="75" y1="193.3" x2="955" y2="193.3"/>
+      <text class="sm" x="62" y="45" text-anchor="end">0.09</text><text class="sm" x="62" y="121" text-anchor="end">0.06</text><text class="sm" x="62" y="198" text-anchor="end">0.03</text><text class="sm" x="62" y="275" text-anchor="end">0</text>
+      <text class="sm" x="75" y="297" text-anchor="middle">0</text><text class="sm" x="282" y="297" text-anchor="middle">20k</text><text class="sm" x="489" y="297" text-anchor="middle">40k</text><text class="sm" x="696" y="297" text-anchor="middle">60k</text><text class="sm" x="903" y="297" text-anchor="middle">80k</text>
+      <polyline class="tr" points="100.8,46.0 126.7,153.0 152.5,185.5 178.4,197.6 204.3,205.1 230.2,209.9 256.1,211.4 282.0,215.9 307.8,216.3 333.7,218.2 359.6,218.8 385.5,219.9 411.4,222.1 437.2,220.9 463.1,223.2 489.0,224.5 514.9,223.5 540.8,227.3 566.7,226.6 592.5,226.8 618.4,226.9 644.3,227.9 670.2,230.1 696.1,233.3 722.0,232.6 747.8,231.6 773.7,233.3 799.6,230.4 825.5,233.3 851.4,235.1 877.2,234.5 903.1,235.2 929.0,236.3 954.9,237.1 975.5,235.1"/>
+      <polyline class="of" points="126.8,136.5 178.5,211.4 230.3,219.2 282.1,210.2 333.8,207.4 385.6,223.5 437.4,206.7 489.1,222.0 540.9,207.4 592.6,228.6 644.4,216.8 696.2,229.9 747.9,225.0 799.7,225.3 851.5,233.0 903.2,241.2 955.0,226.4"/>
+      <line class="tr" x1="575" y1="18" x2="615" y2="18"/><text class="sm" x="623" y="23">训练 loss（2500 步区间中位数）</text><line class="of" x1="575" y1="35" x2="615" y2="35"/><text class="sm" x="623" y="40">训练后离线 L1</text><text class="sm" x="515" y="320" text-anchor="middle">累计优化步数</text>
+    </svg>
+    <figcaption>图 5　V3 的 loss。离线 L1 在 80000 步达到本版最低值，但所有严格闭环结果仍为失败。</figcaption>
+  </figure>
+  <p>这两个样本解决了“肉眼看起来完成就算成功”的评测歧义：圆柱必须同时满足位置、姿态、插入、低速、开爪和脱离接触，并连续稳定三次。1037 步硬停止仍会把“稍慢”混入失败，故 V4 另设 2074 步诊断上限。就在准备按这个合同重跑时，多卡训练完整性审计发现了更基础的问题。</p>
+
+  <h2>8　从版本 3 到版本 4：证明并修复 DDP 根因</h2>
+  <h3>8.1　DDP 缺陷如何被发现和证明</h3>
+  <p>OpenVLA-OFT 原训练代码把连续动作头包装为 DDP 后，仍调用 <code>action_head.module.predict_action(...)</code>。这条路径绕过包装器的标准 <code>forward</code>。三卡最小对照保持初始化、batch 形状、损失和学习率相同，只改变调用路径；绕过 DDP 时，一步 AdamW 后参数最大差异为 0.001000002，同一输入的输出最大差异为 0.171851695。改为经过 DDP <code>forward</code> 后，L1 与 diffusion 两种动作头的梯度、参数和共同输入输出跨卡最大差异均为 0。</p>
+  <table>
+    <caption>表 3　连续动作头三卡同步审计</caption>
+    <tr><th>动作头与路径</th><th>梯度最大差异</th><th>一步后参数最大差异</th><th>共同输入输出最大差异</th></tr>
+    <tr><td>L1，绕过 DDP 的负对照</td><td>0.083215743</td><td>0.001000002</td><td>0.171851695</td></tr>
+    <tr><td>L1，修复后的 DDP forward</td><td class="good">0</td><td class="good">0</td><td class="good">0</td></tr>
+    <tr><td>Diffusion，绕过 DDP 的负对照</td><td>0.130688921</td><td>0.001000002</td><td>0.098186493</td></tr>
+    <tr><td>Diffusion，修复后的 DDP forward</td><td class="good">0</td><td class="good">0</td><td class="good">0</td></tr>
+  </table>
+  <p>缺陷不会必然抛异常：每张卡仍能完成局部前向、反向和优化，训练损失也可能下降；最终模型存档只保存主进程所持有的一份动作头。第一轮 28 维运行已由运行配置和实际调用路径确认受影响。旧七维运行发生在修复之前，并使用同一训练入口，但当时没有保存分布式同步启动前审计；本报告保守地把它视为可能受影响的历史行为证据，不将其作为正确多卡训练的性能基线。</p>
+
+  <h3>8.2　上游能力和 Panthera 新增内容</h3>
+  <table>
+    <caption>表 4　软件职责边界</caption>
+    <tr><th>组成</th><th>本阶段使用的能力</th><th>Panthera 项目新增或修改</th></tr>
+    <tr><td>OpenVLA / OpenVLA-OFT</td><td>视觉语言主干、LoRA、状态投影器（proprio projector）、连续 L1 动作头和并行动作解码</td><td><code>PANTHERA</code> 的 25×7/28 维合同；DDP 前向传播修复保存在 <code>overlays/openvla/patches/openvla_oft_finetune_and_ddp.patch</code></td></tr>
+    <tr><td>RoboTwin / SAPIEN</td><td>机械臂任务生命周期、刚体和关节物理、相机渲染</td><td>单 Panthera embodiment、圆柱入槽任务、28 维实际状态和稳定成功判定</td></tr>
+    <tr><td>Panthera 训练与评测层</td><td>调用上游模型和仿真器</td><td><code>packages/panthera_sim/rollout.py</code>、数据访问层、模型存档合并、两种执行模式、并行评测和视频产物</td></tr>
+  </table>
+
+  <h2>9　版本 4：修复 DDP 后首次闭环成功</h2>
+  <p>正式重训先在 GPU1–3 运行 L1 和扩散式动作头的 DDP 启动前检查，确认跨卡差异为零；随后从共同基础模型开始训练。训练更新低秩适配参数（LoRA adapter）、连续动作头和把 28 维状态映射到模型特征的状态投影器（proprio projector），不对基础模型其余权重做完整微调。L1 损失在逐维归一化后的 25×7 专家动作上计算。</p>
+  <p>配置为每卡处理 6 个样本、有效 batch 18、LoRA rank 32、学习率 <code>5e-4</code>、24 小时墙钟预算，每 5000 步保存不可覆盖模型存档。训练正常写出 <code>TRAINING_COMPLETE</code> 和退出码 0，共保存 17 个完整存档。</p>
+  <p>图 6 的蓝线取自 W&amp;B 运行 <code>1s35hyv6</code>，按每 2500 步区间取训练 loss 中位数；橙线仍为训练完成后在 1037 个专家状态上重算的离线 L1。这两条曲线展示不同口径，不合并为一条“验证 loss”。</p>
+  <p>评测为每个模型存档生成 h20 与逐步等权两条闭环轨迹。1037 步以内完成记为准时成功；继续运行到 2074 步用于判断动作是否只是偏慢。四张 GPU 分别处理互不重叠的模型存档，模型合并、闭环执行和渲染都绑定同一物理 GPU 编号。最终得到 17 个成对摘要、34 个单模式视频、17 个双模式视频和一个总拼接视频，全部通过非空检查与视频可解码性检查（ffprobe）。</p>
+
+  <h3 class="page-break">9.1　什么条件才算成功</h3>
+  <p>环境在圆柱停止阶段检查下列全部条件，并要求连续三次检查都成立。任一条件不满足，模型即使把圆柱移动到槽附近也不计为成功。</p>
+  <table>
+    <caption>表 5　圆柱入槽的确定性成功条件</caption>
+    <tr><th>测量</th><th>阈值</th><th>可观察含义</th></tr>
+    <tr><td>水平中心误差</td><td>X、Y 分别不超过 10 mm</td><td>圆柱中心位于槽口范围内。</td></tr>
+    <tr><td>高度误差</td><td>不超过 12 mm</td><td>圆柱已经落到目标高度附近。</td></tr>
+    <tr><td>轴线倾角</td><td>不超过 5°</td><td>圆柱保持近似直立。</td></tr>
+    <tr><td>插入深度</td><td>至少 30 mm</td><td>圆柱已经进入槽内。</td></tr>
+    <tr><td>线速度、角速度</td><td>不超过 0.025 m/s、0.35 rad/s</td><td>物体已经停止快速运动。</td></tr>
+    <tr><td>夹爪与接触</td><td>夹爪打开；夹爪—圆柱接触冲量不超过 1×10⁻⁶ N·s</td><td>圆柱已经脱离夹爪。</td></tr>
+  </table>
+
+  <h3>9.2　17 个模型存档的最终结果</h3>
+  <table>
+    <caption>表 6　修复后 28 维运行的 17 个模型存档；括号内为完成任务所用动作数</caption>
+    <thead><tr><th>累计优化步数</th><th>离线归一化 L1</th><th>h20</th><th>逐步等权</th></tr></thead><tbody>
+    <tr><td>5000</td><td>0.03133</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>10000</td><td>0.02428</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>15000</td><td>0.02878</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>20000</td><td>0.01610</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>25000</td><td>0.02351</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>30000</td><td>0.01298</td><td class="bad">失败</td><td class="good">准时成功（667）</td></tr>
+    <tr><td>35000</td><td>0.01319</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>40000</td><td>0.01237</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>45000</td><td>0.01279</td><td class="bad">失败</td><td class="good">准时成功（879）</td></tr>
+    <tr><td>50000</td><td>0.01095</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>55000</td><td>0.01672</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>60000</td><td>0.01848</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>65000</td><td>0.02059</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>70000</td><td>0.01560</td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>75000</td><td>0.01187</td><td class="good">准时成功（709）</td><td class="good">准时成功（836）</td></tr>
+    <tr><td>80000</td><td><strong>0.00946</strong></td><td class="bad">失败</td><td class="bad">失败</td></tr>
+    <tr><td>85000</td><td>0.01298</td><td class="bad">失败</td><td class="bad">失败</td></tr></tbody>
+  </table>
+  <p>按模型存档计，17 个候选中有 3 个至少在一种执行模式下成功，只有训练到 75000 步时的存档在两种模式下都成功。按闭环执行计，34 次中有 4 次准时成功，没有 1038–2074 步之间的延迟成功。这里的 34 次共享同一场景，只用于比较模型和执行方式，不能写成 4/34 的场景成功率。</p>
+
+  <figure>
+    <svg viewBox="0 0 1000 330" role="img" aria-label="版本四训练损失、离线L1与闭环成功">
+      <style>.ax{stroke:#70818f;stroke-width:2}.grid{stroke:#dde4e9;stroke-width:1}.train{fill:none;stroke:#426b8c;stroke-width:3}.offline{fill:none;stroke:#c5782d;stroke-width:3}.s1{fill:#3c7d58}.sm2{font:13px 'Noto Sans CJK SC';fill:#5b6c79}</style>
+      <line class="ax" x1="75" y1="40" x2="75" y2="270"/><line class="ax" x1="75" y1="270" x2="955" y2="270"/><line class="grid" x1="75" y1="40" x2="955" y2="40"/><line class="grid" x1="75" y1="116.7" x2="955" y2="116.7"/><line class="grid" x1="75" y1="193.3" x2="955" y2="193.3"/>
+      <text class="sm2" x="62" y="45" text-anchor="end">0.09</text><text class="sm2" x="62" y="121" text-anchor="end">0.06</text><text class="sm2" x="62" y="198" text-anchor="end">0.03</text><text class="sm2" x="62" y="275" text-anchor="end">0</text>
+      <text class="sm2" x="75" y="297" text-anchor="middle">0</text><text class="sm2" x="282" y="297" text-anchor="middle">20k</text><text class="sm2" x="489" y="297" text-anchor="middle">40k</text><text class="sm2" x="696" y="297" text-anchor="middle">60k</text><text class="sm2" x="903" y="297" text-anchor="middle">80k</text>
+      <polyline class="train" points="100.8,56.0 126.7,167.1 152.5,197.5 178.4,208.2 204.3,217.0 230.2,221.2 256.1,225.2 282.0,226.0 307.8,226.9 333.7,228.8 359.6,231.1 385.5,232.6 411.4,234.3 437.2,234.7 463.1,234.8 489.0,237.2 514.9,236.4 540.8,237.6 566.7,236.9 592.5,236.1 618.4,238.1 644.3,238.1 670.2,238.0 696.1,240.3 722.0,239.3 747.8,240.4 773.7,240.1 799.6,241.2 825.5,241.5 851.4,240.5 877.2,242.0 903.1,242.2 929.0,242.9 954.9,244.3 955.3,238.4"/>
+      <polyline class="offline" points="126.8,189.9 178.5,207.9 230.3,196.4 282.1,228.9 333.8,209.9 385.6,236.8 437.4,236.3 489.1,238.4 540.9,237.3 592.6,242.0 644.4,227.3 696.2,222.8 747.9,217.4 799.7,230.1 851.5,239.7 903.2,245.8 955.0,236.8"/>
+      <g class="s1"><circle cx="385.6" cy="236.8" r="8"/><circle cx="540.9" cy="237.3" r="8"/><circle cx="851.5" cy="239.7" r="9"/></g>
+      <line class="train" x1="555" y1="18" x2="595" y2="18"/><text class="sm2" x="603" y="23">训练 loss</text><line class="offline" x1="695" y1="18" x2="735" y2="18"/><text class="sm2" x="743" y="23">离线 L1；绿点为成功存档</text><text class="sm2" x="515" y="320" text-anchor="middle">累计优化步数</text>
+    </svg>
+    <figcaption>图 6　V4 的训练 loss（每 2500 步区间中位数）、训练后离线 L1 与闭环成功位置。80000 步离线 L1 最低，却未成功。</figcaption>
+  </figure>
+
+  <h3>9.3　为什么训练到 80000 和 85000 反而失败</h3>
+  <p><strong>75000 步：持续打开夹爪。</strong></p>
+  <p>h20 在第 677 步进入打开区间，夹爪命令连续 32 帧高于 0.5，最高达到 0.809；逐步等权模式连续 30 帧打开，最高达到 0.806。两条轨迹的圆柱插入深度分别约为 39.1 mm 和 39.9 mm，因此均满足任务条件。</p>
+
+  <p><strong>80000 步：到达槽口，却在阈值附近回闭。</strong></p>
+  <p>80000 步存档的两种模式都到达插入阶段，圆柱与槽中心的最近水平距离分别约为 0.22 mm 和 1.54 mm。h20 的夹爪输出只在 0.50–0.53 附近零碎越界，随后回到 0.378；逐步等权在夹紧后从未超过 0.5，最终为 0.428。圆柱仍被夹住，最终插入深度只有约 14 mm。该存档的离线 L1 为 0.00946，低于成功的 75000 步存档，说明专家状态上的数值拟合更好并没有转化为闭环释放。</p>
+
+  <p><strong>85000 步：退化发生在更早的抬起阶段。</strong></p>
+  <p>h20 没有产生有效的夹紧序列，圆柱最大抬升只有 5.98 mm，随后被碰撞带离任务区域；逐步等权虽然持续接触，却只抬升 0.84 mm，物体基本停在原处。它们都没有进入正常搬运和释放阶段。85000 步存档的离线 L1 也回升到 0.01298。</p>
+  <p>训练步数增加只表示优化器继续更新参数，不保证二值任务成功单调改善。单轨迹中的释放标签又是连续爬升：专家值从 0.48291 变为 0.50050，而 0.5 恰好被执行分析用作打开边界。模型在略微偏离专家轨迹后若只短暂越界，物体不会脱离，下一帧也不会进入示范中的“已经释放”状态，于是形成闭环停滞。</p>
+
+  <h2>10　沿历史回看：哪些问题已解决，哪些因果仍未分离</h2>
+  <p>按系统最终行为比较，旧七维运行的 26 次成对模式闭环执行均失败，28 维输入与修复后 DDP 组成的系统出现 4 次完整成功。四次成功都早于旧评测的 1042 步上限，因而与诊断上限延长到 2074 步无关。</p>
+  <div class="limit"><strong>因果边界：</strong>旧七维运行发生在 DDP 绕过缺陷修复前，并使用同一训练入口，但没有保存启动前审计证据；当前运行同时改变了状态维度和训练器。现有证据只能支持“28 维输入加正确 DDP 的系统优于旧七维历史系统”，不能支持“新增 21 个动力学维度单独造成成功”。严格比较仍需用修复后的同一训练器、相同 seed、batch、学习率和预算重跑七维对照。</div>
+  <p>28 维状态也没有解决时间历史问题。qvel、qacc 和 effort 描述当前瞬间的运动与载荷；当机械臂在槽口附近减速时，相邻任务阶段的速度和加速度都可能接近零。若训练数据没有“松爪失败后继续打开”的恢复样本，模型即使识别出异常载荷，也没有对应监督动作。</p>
+
+  <h2>11　复现与产物核验</h2>
+  <p>以下命令在 Lab 普通用户、目录 <code>/data/lyy/panthera-vla</code> 下执行，不连接真实机械臂。实验 runtime 固定 RoboTwin <code>6dde57155eafa3e4ebf6ad1f93a7cf7d5d41a755</code>、RLinf <code>a3816b596478dcd8a5c69a6ec1468c9519f77b5b</code>，OpenVLA-OFT 安装来源为 <code>c9f0f3d31f438d98f6137936ea78a47f0b2ab087</code>。</p>
+  <p>当前 WSL 仓库以 <code>aeb9baf35cd1d3228f6555240520055a1355aa59</code> 为基准但仍含未提交修改，因此尚不能把一个 Panthera 提交号称为最终公开复现版本。报告写作期间只读取现有产物，没有重新启动训练。</p>
+  <div class="step"><h3>步骤 1：进入固定运行环境</h3>
+    <pre>cd /data/lyy/panthera-vla
+source tools/activate_lab_vla.sh</pre>
+    <p>预期输出包含“Panthera Lab VLA 环境已激活”。若 runtime、Miniforge 或固定上游缺失，立即停止，不在不完整环境中继续。</p>
+  </div>
+  <div class="step"><h3>步骤 2：在多卡训练前验证动作头同步</h3>
+    <pre>PANTHERA_DDP_AUDIT_GPUS=0,1,2 \
+  bash bin/run_lab_openvla_action_head_ddp_audit.sh</pre>
+    <p>脚本会拒绝占用已有计算进程的 GPU。验收条件是 L1 与 diffusion 的 <code>ddp_forward</code> 梯度、参数和共同输入输出差异均不超过 <code>1e-7</code>，且负对照必须出现非零差异。该命令需要三张空闲 GPU，应在获得计算资源授权后执行。</p>
+  </div>
+  <div class="step"><h3>步骤 3：检查已经完成的最终评测</h3>
+    <pre>run=/data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/\
+ddpfix-dynamics-28d-ep2-24h-20260922T173901Z
+results="$run/extended-budget-eval-20260923T214752Z"
+
+test -f "$results/EVALUATION_COMPLETE"
+python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(len(p["checkpoints"]))' \
+  "$results/summary.json"
+ffprobe -v error "$results/all-checkpoints-two-mode-comparison.mp4"</pre>
+    <p>预期得到 17 个模型存档、视频探测工具 <code>ffprobe</code> 不报告错误，并存在完成标志。缺少任一项都不能把流水线写成完成。</p>
+  </div>
+  <div class="step"><h3>步骤 4：查看选定的模型存档</h3>
+    <pre>video="$results/paired-preview-step-75000/step-75000-two-mode-comparison.mp4"
+ffprobe -v error -show_entries stream=codec_name,width,height,duration \
+  -of json "$video"</pre>
+    <p>该视频左侧为 h20，右侧为逐步等权；两侧都应完成插入和释放。如果视频、同目录的 <code>pair-summary.json</code> 缺失或 ffprobe 解码失败，应停止选模并修复产物。80000 步视频用于对照“到位但不松爪”，不得用最低离线 L1 自动替换 75000 步存档。</p>
+  </div>
+
+  <h2>12　局限、下一步与停止条件</h2>
+  <ul>
+    <li>实验只使用一个 episode；所有成功都发生在训练轨迹对应场景，尚未证明场景泛化。</li>
+    <li>旧七维运行可能受 DDP 缺陷影响，缺少修复后七维成对重训，无法分离 28 维状态的独立贡献。</li>
+    <li>28 维状态来自确定性重放补齐；正式数据应在采集时记录 qvel、qacc 和 effort。</li>
+    <li>当前模型只读取单帧图像和瞬时状态，没有历史帧、历史动作或通用任务阶段输出。</li>
+    <li>逐步等权模式在旧计时中约为实时预算的 6.43 倍，不能直接迁移到 50 Hz 真机控制。</li>
+    <li>34 次模式评测共享同一个场景，不能用于估计总体成功率或置信区间。</li>
+    <li>训练与视频在 Lab 保存，尚未形成含模型哈希、环境锁文件和数据许可证的公开复现包。</li>
+  </ul>
+  <p>下一步优先级是：先用修复后的训练器重跑七维对照；再决定是否加入短时间历史或通用的阶段转移输出；随后在多个固定机位 episode 上验证选模规则。只要专家重放、单轨迹闭环或未见场景门禁仍为红色，就不进入真实机械臂 VLA 实验。</p>
+
+  <h2>13　结论</h2>
+  <p>这组实验建立了一条能够排除测量错误的证据链。项目先发现并作废错误相机和预算产生的结果，再固定单轨迹合同，随后定位释放阶段的闭环失败，最后通过本机对照证明多卡动作头没有同步，并完成修复后重训。</p>
+  <p>修复后 28 维运行首次让纯模型完成固定圆柱入槽任务。75000 步存档在 h20 与逐步等权两种模式下均成功，因此被选为当前候选。80000 步存档具有更低离线 L1 却失败，说明不能选择最后存档或最低专家状态损失。当前结论止于单轨迹健全性检查；泛化、28 维状态的独立贡献、实时执行和真机迁移仍需后续实验。</p>
+
+  <h2 id="references">参考文献</h2>
+  <div class="refs">
+    <p>[1] Kim, M. J., Finn, C., &amp; Liang, P. (2025). <a href="https://www.roboticsproceedings.org/rss21/p017.html">Fine-Tuning Vision-Language-Action Models: Optimizing Speed and Success</a>. Robotics: Science and Systems XXI.</p>
+    <p>[2] Zhao, T. Z., Kumar, V., Levine, S., &amp; Finn, C. (2023). <a href="https://arxiv.org/abs/2304.13705">Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware</a>. arXiv:2304.13705.</p>
+    <p>[3] Ross, S., Gordon, G. J., &amp; Bagnell, J. A. (2011). <a href="https://proceedings.mlr.press/v15/ross11a.html">A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning</a>. AISTATS 2011.</p>
+    <p>[4] PyTorch Contributors. <a href="https://docs.pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html">DistributedDataParallel</a>. PyTorch official documentation, accessed 2026-09-24.</p>
+    <p>[5] Kim, M. J., et al. (2025). <a href="https://proceedings.mlr.press/v270/kim25c.html">OpenVLA: An Open-Source Vision-Language-Action Model</a>. Proceedings of the 8th Conference on Robot Learning, 2679–2713.</p>
+  </div>
+
+  <h2 class="page-break">项目内证据索引</h2>
+  <table>
+    <tr><th>编号</th><th>证据</th><th>用途</th></tr>
+    <tr><td>E1</td><td><code>docs/18_eval_harness_defects_2026-09-19.md</code></td><td>动作预算、相机随机化和早期 0/18 的评测台审计。</td></tr>
+    <tr><td>E2</td><td><code>docs/20_eval_observation_mismatch_2026-09-19.md</code></td><td>实际相机位姿、RGB/BGR 契约和旧数字作废。</td></tr>
+    <tr><td>E3</td><td><code>docs/22_single_trajectory_overfit_gate_hardening_2026-09-20.md</code></td><td>单轨迹门禁合同、旧七维运行、两种执行模式和释放诊断。</td></tr>
+    <tr><td>E4</td><td><code>docs/24_openvla_dynamics_proprioception_overfit_2026-09-21.md</code></td><td>28 维状态语义、派生数据门禁和多卡完整性更正。</td></tr>
+    <tr><td>E5</td><td><code>docs/25_openvla_action_head_ddp_sync_fix_2026-09-23.md</code></td><td>DDP 根因、修复、回归和修复后运行配置。</td></tr>
+    <tr><td>E6</td><td><code>docs/evidence/openvla_action_head_ddp_prefix_2026-09-22.json</code> 与 <code>...postfix_2026-09-23.json</code></td><td>DDP 修复前后的机器可读数值。</td></tr>
+    <tr><td>E7</td><td><code>docs/evidence/single_trajectory_overfit_stage_2026-09-24.json</code></td><td>旧七维与当前 28 维配置、成功计数和关键失败轨迹的紧凑快照。</td></tr>
+    <tr><td>E8</td><td>Lab 最终目录 <code>.../ddpfix-dynamics-28d-ep2-24h-20260922T173901Z/extended-budget-eval-20260923T214752Z/</code></td><td>17 个成对摘要、完整 JSON、视频、总汇总和完成标志。</td></tr>
+  </table>
+  <p class="small">报告源文件和复审记录保存在 WSL 源仓库；大型模型、日志和视频按项目目录职责保存在 Lab。本文没有执行真机命令，也没有因写作任务重新启动 GPU 长训练。</p>
+</main></body></html>

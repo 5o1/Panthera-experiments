@@ -9,6 +9,12 @@ import pytest
 
 
 REPO = Path(__file__).resolve().parents[1]
+REPO_ROLE_FILE = REPO / ".panthera-repo-role"
+REPO_ROLE = (
+    REPO_ROLE_FILE.read_text(encoding="utf-8").strip()
+    if REPO_ROLE_FILE.exists()
+    else "source"
+)
 CURRENT_ENTRYPOINTS = (
     REPO / "tools/activate_lab_vla.sh",
     REPO / "tools/bootstrap_lab_vla.sh",
@@ -67,6 +73,8 @@ def test_lab_bootstrap_locates_openvla_without_importing_it_before_patch():
 
 
 def test_primary_context_documents_link_the_latest_decisions():
+    if REPO_ROLE == "gpu_node":
+        pytest.skip("technical reports are owned by the WSL source repository")
     expected = {
         "docs/18_eval_harness_defects_2026-09-19.md",
         "docs/19_architecture_plan_2026-09-19.md",
@@ -78,6 +86,27 @@ def test_primary_context_documents_link_the_latest_decisions():
         text = document.read_text(encoding="utf-8")
         missing = sorted(path for path in expected if path not in text)
         assert missing == [], f"{document.name} omits {missing}"
+
+
+def test_repository_role_keeps_technical_reports_on_wsl_only():
+    assert REPO_ROLE in {"source", "gpu_node"}
+    if REPO_ROLE == "gpu_node":
+        assert not (REPO / "docs").exists(), (
+            "gpu_node must not contain technical reports; keep them in the WSL "
+            "Panthera-experiments repository"
+        )
+    else:
+        assert (REPO / "docs").is_dir(), "source repository must retain docs/"
+
+
+def test_lab_mirror_does_not_deploy_repository_specific_context():
+    text = (REPO / "tools/lab_mirror.sh").read_text(encoding="utf-8")
+    match = re.search(r"^paths=\(([^)]*)\)$", text, flags=re.MULTILINE)
+    assert match is not None
+    deployed = set(match.group(1).split())
+    assert deployed.isdisjoint(
+        {"docs", "README.md", "AGENTS.md", "CLAUDE.md", ".gitignore"}
+    )
 
 
 @pytest.mark.parametrize("document_name", ("README.md", "AGENTS.md", "CLAUDE.md"))
@@ -112,12 +141,60 @@ def test_single_trajectory_gate_preserves_and_names_its_actual_training_data():
 
 def test_openvla_patch_keeps_the_hard_budget_with_external_closed_loop_stopping():
     text = (
-        REPO / "overlays/openvla/patches/openvla_oft_validation_early_stopping.patch"
+        REPO / "overlays/openvla/patches/openvla_oft_finetune_and_ddp.patch"
     ).read_text(encoding="utf-8")
     assert 'external_stop_file: Optional[str]' in text
     assert 'stop_reason = "external_success"' in text
     assert 'if log_step >= cfg.max_steps:' in text
+
+
+def test_openvla_action_heads_train_through_ddp_forward():
+    """Parameterized training must call DDP, not methods on ``DDP.module``."""
+    text = (
+        REPO / "overlays/openvla/patches/openvla_oft_finetune_and_ddp.patch"
+    ).read_text(encoding="utf-8")
+
+    assert text.count("+    def forward(self, actions_hidden_states):") == 2
+    assert "+            predicted_actions = action_head(actions_hidden_states)" in text
+    assert "+            noise_pred = action_head(actions_hidden_states)" in text
+    assert "+            predicted_actions = action_head.module.predict_action" not in text
+    assert "+            noise_pred = action_head.module.predict_noise" not in text
     assert '"max_steps"' in text
+
+
+def test_overfit_evaluation_separates_expert_gate_from_diagnostic_timeout():
+    rollout = (REPO / "packages/panthera_sim/rollout.py").read_text(encoding="utf-8")
+    evaluator = (
+        REPO / "pipelines/ci/evaluate_numbered_overfit_checkpoints.sh"
+    ).read_text(encoding="utf-8")
+    parallel = (
+        REPO / "pipelines/ci/rerun_extended_budget_overfit_evaluations.sh"
+    ).read_text(encoding="utf-8")
+
+    assert '"on_time_success"' in rollout
+    assert '"delayed_success"' in rollout
+    assert '"expert_action_budget": expert_budget' in rollout
+    assert '--expert-action-budget "$expert_action_budget"' in evaluator
+    assert '--max-actions "$max_actions"' in evaluator
+    assert 'export CUDA_DEVICE_ORDER="$cuda_device_order"' in evaluator
+    assert 'CI_OVERFIT_CUDA_DEVICE_ORDER:-PCI_BUS_ID' in evaluator
+    assert evaluator.count(
+        'CUDA_DEVICE_ORDER="$cuda_device_order" CUDA_VISIBLE_DEVICES="$gpu"'
+    ) >= 3
+    assert '--gpus "$gpu"' in evaluator
+    assert "--gpus 0" not in evaluator
+    assert 'CI_OVERFIT_EVAL_MAX_ACTIONS:-2074' in parallel
+    assert 'CI_OVERFIT_EVAL_GPUS:-0,1,2,3' in parallel
+
+
+def test_checkpoint_pair_queue_waits_for_atomic_checkpoint_completion():
+    text = (
+        REPO / "pipelines/ci/evaluate_numbered_overfit_checkpoint_pairs.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "checkpoint_complete()" in text
+    assert 'if ! checkpoint_complete "$checkpoint" "$step"' in text
+    assert 'checkpoint ${step} 仍在写入' in text
 
 
 def test_single_trajectory_gate_uses_separate_training_and_rollout_gpus():

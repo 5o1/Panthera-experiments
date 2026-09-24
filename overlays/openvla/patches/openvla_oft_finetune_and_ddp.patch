@@ -1,7 +1,35 @@
+diff --git a/prismatic/models/action_heads.py b/prismatic/models/action_heads.py
+index 0f5d63b..7f7fbb3 100644
+--- a/prismatic/models/action_heads.py
++++ b/prismatic/models/action_heads.py
+@@ -95,6 +95,10 @@ class L1RegressionActionHead(nn.Module):
+             num_blocks=2, input_dim=input_dim*ACTION_DIM, hidden_dim=hidden_dim, output_dim=action_dim
+         )
+
++    def forward(self, actions_hidden_states):
++        """Predict actions through ``nn.Module.__call__`` and DDP hooks."""
++        return self.predict_action(actions_hidden_states)
++
+     def predict_action(self, actions_hidden_states):
+         # actions_hidden_states: last hidden states of Transformer corresponding to action tokens in sequence
+         # - shape: (batch_size, chunk_len * action_dim, hidden_dim)
+@@ -164,6 +168,10 @@ class DiffusionActionHead(nn.Module):
+         self.noise_scheduler = DDIMScheduler(num_train_timesteps=num_diffusion_steps_train, beta_schedule="squaredcos_cap_v2")
+         self.time_encoder = SinusoidalPositionalEncoding(dim=hidden_dim)
+
++    def forward(self, actions_hidden_states):
++        """Predict noise through ``nn.Module.__call__`` and DDP hooks."""
++        return self.predict_noise(actions_hidden_states)
++
+     def sample_noisy_actions(self, ground_truth_actions):
+         """
+         Samples noise and applies noise to ground-truth actions to produce noisy actions, which are
 diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
+index 940e485..88d5478 100644
 --- a/vla-scripts/finetune.py
 +++ b/vla-scripts/finetune.py
-@@ -62,5 +62,7 @@ from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
+@@ -61,6 +61,8 @@ from prismatic.vla.constants import (
+ from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
  from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 +from validation_early_stopping import ValidationEarlyStopping
@@ -19,7 +47,28 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
      save_freq: int = 10_000                          # Checkpoint saving frequency in steps
      save_latest_checkpoint_only: bool = False        # If True, saves only 1 checkpoint, overwriting latest checkpoint
                                                       #   (If False, saves all checkpoints)
-@@ -665,6 +670,26 @@ def save_training_checkpoint(
+@@ -384,14 +389,16 @@ def run_forward_pass(
+         )  # (B, act_chunk_len, D)
+
+         if use_l1_regression:
+-            # Predict action
+-            predicted_actions = action_head.module.predict_action(actions_hidden_states)
++            # Route the parameterized forward pass through DDP. Calling the
++            # wrapped module directly bypasses DDP's reducer preparation and
++            # leaves every rank with a different action head after optimizer.step().
++            predicted_actions = action_head(actions_hidden_states)
+             # Get full L1 loss
+             loss = torch.nn.L1Loss()(ground_truth_actions, predicted_actions)
+
+         if use_diffusion:
+-            # Predict noise
+-            noise_pred = action_head.module.predict_noise(actions_hidden_states)
++            # As above, the training prediction must pass through DDP.
++            noise_pred = action_head(actions_hidden_states)
+             # Get diffusion noise prediction MSE loss
+             noise_pred = noise_pred.reshape(noise.shape)
+             loss = nn.functional.mse_loss(noise_pred, noise, reduction="mean")
+@@ -665,6 +672,26 @@ def save_training_checkpoint(
          dist.barrier()
 
 
@@ -46,7 +95,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
  def run_validation(
      vla,
      action_head,
-@@ -680,7 +705,7 @@ def run_validation(
+@@ -678,7 +705,7 @@ def run_validation(
      log_step,
      distributed_state,
      val_time_limit,
@@ -55,7 +104,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
      """
      Compute validation set metrics for logging.
 
-@@ -735,6 +760,8 @@ def run_validation(
+@@ -735,6 +762,8 @@ def run_validation(
              if time.time() - val_start_time > val_time_limit:
                  break
 
@@ -64,7 +113,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
      # Compute average validation metrics
      avg_val_metrics = {}
      for metric_name in all_val_metrics[0].keys():
-@@ -742,12 +769,22 @@ def run_validation(
+@@ -742,12 +771,22 @@ def run_validation(
          if values:
              avg_val_metrics[metric_name] = sum(values) / len(values)
 
@@ -88,7 +137,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
 
 
  @draccus.wrap()
-@@ -770,6 +807,10 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -770,6 +809,10 @@ def finetune(cfg: FinetuneConfig) -> None:
      assert not (cfg.use_l1_regression and cfg.use_diffusion), (
          "Cannot do both L1 regression and diffusion. Please pick one of them!"
      )
@@ -99,7 +148,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
 
      # Trim trailing forward slash ('/') in VLA path if it exists
      cfg.vla_path = cfg.vla_path.rstrip("/")
-@@ -783,6 +824,12 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -782,12 +825,24 @@ def finetune(cfg: FinetuneConfig) -> None:
      run_dir = cfg.run_root_dir / run_id
      os.makedirs(run_dir, exist_ok=True)
 
@@ -112,7 +161,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
      # GPU setup
      distributed_state = PartialState()
      device_id = distributed_state.local_process_index
-@@ -790,5 +837,11 @@ def finetune(cfg: FinetuneConfig) -> None:
+     torch.cuda.set_device(device_id)
      torch.cuda.empty_cache()
 
 +    if cfg.use_val_set and distributed_state.is_main_process:
@@ -124,7 +173,8 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
      # Initialize wandb logging
      if distributed_state.is_main_process:
          wandb.init(entity=cfg.wandb_entity, project=cfg.wandb_project, name=f"ft+{run_id}")
-@@ -1025,6 +1078,6 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -1029,7 +1084,7 @@ def finetune(cfg: FinetuneConfig) -> None:
+     }
 
      # Start training
 -    with tqdm.tqdm(total=cfg.max_steps, leave=False) as progress:
@@ -132,7 +182,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
          vla.train()
          optimizer.zero_grad()
          for batch_idx, batch in enumerate(dataloader):
-@@ -1075,7 +1128,9 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -1075,7 +1130,9 @@ def finetune(cfg: FinetuneConfig) -> None:
                  log_metrics_to_wandb(smoothened_metrics, "VLA Train", log_step, wandb)
 
              # [If applicable] Linearly warm up learning rate from 10% to 100% of original
@@ -143,7 +193,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
                  lr_progress = min((gradient_step_idx + 1) / cfg.lr_warmup_steps, 1.0)  # Cap at 1.0
                  current_lr = original_lr * (0.1 + 0.9 * lr_progress)
                  for param_group in optimizer.param_groups:
-@@ -1116,7 +1171,7 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -1115,7 +1172,7 @@ def finetune(cfg: FinetuneConfig) -> None:
 
              # Test model on validation set
              if cfg.use_val_set and log_step > 0 and log_step % cfg.val_freq == 0:
@@ -152,7 +202,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
                      vla=vla,
                      action_head=action_head,
                      noisy_action_projector=noisy_action_projector if cfg.use_diffusion else None,
-@@ -1131,13 +1186,91 @@ def finetune(cfg: FinetuneConfig) -> None:
+@@ -1129,14 +1186,92 @@ def finetune(cfg: FinetuneConfig) -> None:
                      distributed_state=distributed_state,
                      val_time_limit=cfg.val_time_limit,
                  )
@@ -202,6 +252,9 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
 +
                  # Set model back to training mode after validation
                  vla.train()
+-
+-            # Stop training when max_steps is reached
+-            if log_step == cfg.max_steps:
 +                if bool(decision_flags[2].item()):
 +                    stop_reason = "external_success"
 +                    if distributed_state.is_main_process:
@@ -224,19 +277,15 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
 +                            f"best validation loss={early_stopping.best_loss:.8f}"
 +                        )
 +                    break
-
--            # Stop training when max_steps is reached
--            if log_step == cfg.max_steps:
--                print(f"Max step {cfg.max_steps} reached! Stopping training...")
--                break
++
 +            # max_steps remains the reproducible compute budget.  Validation
 +            # loss may stop a diagnostic run earlier; an external validator
 +            # may stop a closed-loop gate earlier.
 +            if log_step >= cfg.max_steps:
 +                stop_reason = "max_steps"
-+                print(f"Max step {cfg.max_steps} reached! Stopping training...")
-+                break
-+
+                 print(f"Max step {cfg.max_steps} reached! Stopping training...")
+                 break
+
 +    if stop_reason not in {"early_stopping", "external_success", "max_steps"}:
 +        raise RuntimeError(f"Training ended without a configured stop signal: {stop_reason!r}")
 +    if not best_checkpoint_saved:
@@ -245,6 +294,7 @@ diff --git a/vla-scripts/finetune.py b/vla-scripts/finetune.py
 +        merge_saved_best_checkpoint(cfg, run_dir, distributed_state)
 +    if distributed_state.is_main_process:
 +        early_stopping.write_json(early_stopping_path, stop_reason=stop_reason)
-
++
 
  if __name__ == "__main__":
+     finetune()

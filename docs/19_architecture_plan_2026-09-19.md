@@ -231,3 +231,22 @@ overlays/robotwin/assets/profiles/panthera_phone/
   而 `assets` 是整目录符号链接，写入会穿透到 16 GB 的共享资产。声明为可写的路径
   重建为实目录、子项逐个链接。
 - 31 条专家不可复现的 episode 未解决：11 条是释放后在槽中持续振荡（求解器接触精度不足，提高迭代到 64 在全量上更差），20 条是位置类判据不达标
+
+## 10. WSL 与 gpu_node 的仓库边界（2026-09-23）
+
+WSL 的 `Panthera-experiments` 是项目知识与实现的源仓库，保存技术报告、阶段结论、设计决策、
+可部署的实验代码以及测试。Lab 的 `gpu_node` 是实验执行仓库，保存运行环境、实验脚本、
+overlay、实验资产、运行配置，以及 Git 忽略的大体积日志、视频、数据集和 checkpoint。
+
+两者共享实验代码不等于共享技术文档。`docs/`、项目级 `README.md`、`AGENTS.md`、
+`CLAUDE.md` 和各仓库自己的 `.gitignore` 都属于仓库角色元数据，不进入代码镜像列表。
+`gpu_node` 只保留最小的根级运行说明，并用内容为 `gpu_node` 的 `.panthera-repo-role`
+触发仓库合同；
+该合同要求 Lab 工作树不存在 `docs/`。实验产生的机器可读 JSON、原始日志和视频继续留在
+`reports/`、`results/`、`ci/`、`runs/` 等产物目录，技术分析则只写入 WSL 的 `docs/`。
+
+2026-09-23 清理前，Lab 仓库错误地跟踪了整套技术文档，`tools/lab_mirror.sh` 也会同步
+`docs/`、`CLAUDE.md` 和 `.gitignore`。清理时先逐文件与 WSL 比对，确认 WSL 已保留全部
+内容且 `docs/22` 版本更新；随后从 `gpu_node` 工作树移除 69 个文档文件，并把同步白名单
+收窄为 `bin/ packages/ pipelines/ overlays/ patches/ tools/`。DDP 审计原始结果仍保存在
+Lab 的 `reports/evidence/`，没有随报告清理而删除。

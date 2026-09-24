@@ -458,6 +458,13 @@ Y/Z 71.2/44.5 mm。safe Y/Z 因而通过首次真机验收，但这不构成开�
       [Gate 2 收口文档](22_single_trajectory_overfit_gate_hardening_2026-09-20.md) 第 8 节。
 - [ ] 用最小、同口径实验验证释放阶段的可观测性修复：优先比较短时间历史或通用阶段转移
       输出；不得按槽口几何直接强制开爪，也不得把这种规则接管计作 VLA Gate 2 成功。
+- [x] 修复连续动作头绕过 DDP 包装器造成的多卡梯度分叉，并用三卡启动前审计验证 L1 与
+      diffusion 动作头跨卡梯度、参数和共同输入输出差异均为零。修复后的 28 维单轨迹训练
+      保存 17 个模型存档；最终 34 次模式评测出现 4 次准时成功，来自 30000、45000 和
+      75000 步存档，其中 75000 步在 h20 与逐步等权两种模式下都成功。80000 步离线 L1
+      更低但未持续松爪，85000 步退化到抬起阶段，因此继续以闭环执行选模，不用离线 L1
+      或最后一个存档自动选模。完整证据、方法和限制见
+      [单轨迹过拟合实验阶段报告](panthera_single_trajectory_overfit_stage_report_zh.html)。
 - [x] 用户已人工审阅并批准 schema 10 的 10 分钟平衡分层视频；批准记录连同视频 SHA-256
       保存在正式数据集状态目录。
 - [ ] schema 10 无人值守训练流水线正在运行：媒体审计和 RLDS 使用有界 CPU 并行；正式
@@ -585,3 +592,61 @@ VLA 只输出带时间戳和有效期的短时动作块或子目标。关节限�
 
 实现、数据语义、Lab 路径和验收规则见
 [OpenVLA 28 维动力学 proprio 过拟合实验](24_openvla_dynamics_proprioception_overfit_2026-09-21.md)。
+
+## 12. P0：OpenVLA-OFT 多卡 action head 同步（2026-09-23）
+
+- [x] 在实际 OpenVLA-OFT `0.0.1` / PyTorch `2.11.0+cu130` 环境复现 DDP forward 绕过：
+      三卡不同局部 batch 做一步 AdamW 后，L1 action head 参数最大差异为 `0.001000002`，
+      同一输入的输出最大差异为 `0.171851695`；经过 DDP forward 的对照均为 `0`。
+- [x] 给 L1 与 diffusion action head 增加标准 `forward()`，并把参数化训练调用从
+      `action_head.module.predict_*` 改为 `action_head(...)`。无梯度 diffusion sampling
+      保持原推理接口。
+- [x] 新增三卡回归和一键入口。L1/diffusion 的故障负对照仍能观察到分叉，修复后的梯度、
+      参数和共同输入输出跨卡差异均为 `0`；bootstrap 首次应用和幂等复跑均通过。
+- [x] 把早停/硬预算/学习率与 DDP 修改合并到同一个 `finetune.py` 补丁，满足“一个上游文件
+      只由一个 patch 所有”的装配契约；同时修复 constants 补丁不可逆和状态漂移。
+- [x] 在独立 OpenVLA-OFT checkout、基于 `upstream/main@e4287e9` 创建
+      `fix/ddp-action-head-forward-sync`，提交最小上游修复 `bf0b44c`；两 rank CPU/Gloo
+      的 L1/diffusion 回归均通过。Panthera 两个仓库中误建的同名分支已删除。
+- [x] 将 OpenVLA-OFT 修复分支推到 `5o1/openvla-oft`，并向上游创建
+      [PR #162](https://github.com/moojink/openvla-oft/pull/162)；PR 不携带 Panthera 专用
+      常量、早停、外部停止或技术报告。创建时 PR 为 open、非 draft，暂无自动检查。
+- [x] 处理 PR review 提出的测试污染：提交 `2c767d9` 在 `finally` 中恢复合成
+      `prismatic` 的 `sys.modules` 状态，并增加导入隔离回归；最终为 `3 passed, 2 subtests passed`。
+- [ ] 将修复前 GPU1–3 训练的 7D/28D checkpoint 标记为诊断历史，不再作为正确多卡 SFT
+      基线。它们的闭环视频保留，但不能据此确认或否定 proprio、时间历史或抖动方案。
+- [ ] 从共同基础模型重新运行 episode 2 三卡成对训练；保持 25×7 action、28D proprio、
+      每卡 batch 6、学习率 `5e-4` 和每 5000 步 checkpoint，再以相同闭环与视频口径比较
+      step 15000/40000/65000。完成前不得宣称 DDP 修复已经消除抖动或松爪失败。
+- [x] 2026-09-23 已启动修复后的 28D episode 2 重训：即时三卡 DDP preflight 为 `pass`，
+      L1/diffusion 的梯度、参数和共同输入输出跨 rank 差异均为 `0`；用户级 systemd 单元为
+      `panthera-overfit-ddpfix-20260922T173901Z.service`，运行目录为
+      `/data/lyy/panthera-vla/ci/overfit-ep2-dynamics-24h/ddpfix-dynamics-28d-ep2-24h-20260922T173901Z/`，
+      W&B run 为 `assanekowww/panthera-ci-overfit-dynamics-24h/1s35hyv6`。该勾选只表示任务
+      已可靠启动，不表示训练或闭环验收已经完成。
+- [x] 已同时启动 `panthera-overfit-ddpfix-eval-20260922T173901Z.service`。它在 GPU0 等待
+      每个 5000-step checkpoint，生成 h1/h20 双模式视频和最终总拼接视频；等待阶段不占用
+      GPU0，且不与 GPU1–3 的训练争卡。
+- [x] 24 小时修复后训练已正常收口：墙钟预算结束、总退出码为 `0`，保留 step
+      5000–85000 共 17 个完整 checkpoint。旧自动评测处理到 step 75000 后，在 step 80000
+      尚未原子写完时误入视频拼接并退出；训练和 checkpoint 未受影响。
+- [x] 修正闭环预算语义：1037 只作为专家时限门禁，rollout 继续到 2074；结果明确分为
+      `on_time_success`、`delayed_success`、`failure`。同时让 checkpoint 队列在权重写完前
+      等待，避免再次触发 step 80000 竞态。
+- [ ] 已启动全部 17 个 checkpoint 的扩展预算 h20/h1 重评。外部 `patchconvmoe` 任务结束后，
+      当前服务 `panthera-ddpfix-extended-eval-20260923T220819Z.service` 使用 GPU0–3 四卡并行，
+      输出到运行目录下的 `extended-budget-eval-20260923T214752Z/`。完成后检查 34 个模式
+      结果、17 个双模式视频、总拼接视频和 `EVALUATION_COMPLETE`。
+- [x] 修复评测 GPU 编号契约：原脚本用 `nvidia-smi` ordinal 做空闲检查，却没有固定 CUDA
+      枚举顺序，第一次 GPU2/3 启动实际撞到物理 GPU0/1 并 OOM。现在强制
+      `CUDA_DEVICE_ORDER=PCI_BUS_ID`。随后又发现 rollout 子进程的 `--gpus 0` 会覆盖外层
+      `CUDA_VISIBLE_DEVICES`，现改为传递 worker 的真实 ordinal；checkpoint 合并阶段也绑定
+      同一张卡。四个活跃合并进程已分别验证为物理 GPU0、1、2，GPU3 则已进入 rollout；
+      错误服务均在产出正式结果前停止。
+
+技术细节、证据 JSON、复现命令和历史产物影响见
+[OpenVLA-OFT 多卡 action head 同步修复报告](25_openvla_action_head_ddp_sync_fix_2026-09-23.md)。
+
+- [x] 收口 WSL/Lab 仓库边界：技术报告和分析记录只保存在 WSL `docs/`；`gpu_node`
+      保留实验环境、脚本、资产、运行配置及日志/视频/checkpoint。同步入口不再传输
+      `docs/` 或仓库角色文件，Lab 仓库合同会拒绝重新出现 `docs/`。
